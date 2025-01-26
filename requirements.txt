@@ -1,0 +1,4 @@
+express
+dotenv
+mongoose
+body-parser
