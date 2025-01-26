@@ -5,7 +5,7 @@ const app = express();
 
 // MongoDB Configurations 
 const mongoose = require('mongoose')
-mongoose.connect(`mongodb+srv://${process.env.MONGO_USER}:${process.env.MONGO_PASS}6@tripscluster.ajq0e.mongodb.net/playerData?retryWrites=true&w=majority`, {useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.connect(`mongodb+srv://${process.env.MONGO_USER}:${process.env.MONGO_PASS}@tripscluster.ajq0e.mongodb.net/playerData?retryWrites=true&w=majority`, {useNewUrlParser: true, useUnifiedTopology: true });
 
 var db = mongoose.connection;
 
