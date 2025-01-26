@@ -5,7 +5,7 @@ const app = express();
 
 // MongoDB Configurations 
 const mongoose = require('mongoose')
-mongoose.connect(`mongodb+srv://${process.env.MONGO_USER}:${process.env.MONGO_PASS}@tripscluster.ajq0e.mongodb.net/playerData?retryWrites=true&w=majority`, {useNewUrlParser: true, useUnifiedTopology: true, tlsAllowInvalidCertificates: true });
+mongoose.connect(`mongodb+srv://${process.env.MONGO_USER}:${process.env.MONGO_PASS}@tripscluster.ajq0e.mongodb.net/Content?retryWrites=true&w=majority`, {useNewUrlParser: true, useUnifiedTopology: true, tlsAllowInvalidCertificates: true });
 
 var db = mongoose.connection;
 
@@ -16,7 +16,7 @@ db.once("open", function() {
 });
 
 require('./models/player')
-const playerModel = mongoose.model('Player')
+const PointsModel = mongoose.model('Points')
 
 app.use((req, res, next) => {
 
@@ -46,29 +46,30 @@ app.get("/", (request, response) => {
 // Now you setup a GET route at / which is basically
 // the Homepage of your app
 
-app.get("/player-data", (request, response) => {
+app.get("/get-points", (request, response) => {
   response.send("No Access")
 })
 
-app.get("/player-data/:id", async (request, response) => {
-  async function playerDataCheck() {
-    const playerData = await playerModel.findOne({ userID: `${request.params.id}` })
+app.get("/get-points/:id", async (request, response) => {
+  async function PointsDataCheck() {
+    const PointsData = await PointsModel.findOne({ user_id: `${request.params.id}` })
     
-    if (playerData) {
-      return playerData
+    if (PointsData) {
+      return PointsData
     } else {
-      const newPlayerDataInstance = new playerModel({
-        userID: `${request.params.id}`,
-        coins: 0
+      const newPointsDataInstance = new PointsModel({
+        user_id: `${request.params.id}`,
+        points: 0,
+        purchase_history: {},
       })
       
-      const newPlayerData = await newPlayerDataInstance.save()
+      const newPointsData = await newPointsDataInstance.save()
       
-      return newPlayerData
+      return newPointsData
     }
   }
 
-  response.json(await playerDataCheck());
+  response.json(await PointsDataCheck());
 });
 
 const bodyParser = require('body-parser');
@@ -79,11 +80,11 @@ app.use(bodyParser.urlencoded({
 
 app.use(bodyParser.json());
 
-app.post("/player-data/update-coins/:id", async (request, response) => {
+app.post("/get-points/update-points/:id", async (request, response) => {
   // We use a mongoose method to find A record and update!
-  await playerModel.findOneAndUpdate(
+  await PointsModel.findOneAndUpdate(
     { userID: `${request.params.id}` },
-    { $set: { coins: request.body.coins } }
+    { $set: { points: request.body.points } }
     // We set the coins to the coins we received in the body of the request
   );
   response.send("Updated Database.");
