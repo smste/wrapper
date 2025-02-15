@@ -80,8 +80,14 @@ app.get("/get/flight/:flight_reference/arrival/:arrival_airport?", async (reques
     try {
         const { flight_reference, arrival_airport } = request.params;
 
-        // Find the flight by reference
-        const flight = await FlightCreationModel.findOne({ flight_reference });
+        // Find the flight by either flight_reference or departure airport
+        const flight = await FlightCreationModel.findOne({ 
+            $or: [
+                { flight_reference },
+                { "departure.airport": flight_reference }
+            ]
+        });
+        
         if (!flight) {
             return response.status(404).json({ error: "Flight not found" });
         }
@@ -102,6 +108,7 @@ app.get("/get/flight/:flight_reference/arrival/:arrival_airport?", async (reques
         response.status(500).json({ error: "Internal Server Error" });
     }
 });
+
 
 // async function FlightDataModel(request) {
 //     const flightReference = request.params.flight_reference;
