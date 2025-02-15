@@ -29,6 +29,10 @@ const FlightCreationSchema = new mongoose.Schema({
        }],
     dispatcher: { type: String, required: true, unique: true },
     teleportservice_key: { type: String, required: false, unique: true, default: "" },
+    date_of_event: [{
+        date: { type: String, required: true, unique: true },
+        time: { type: String, required: true, unique: true },
+    }]
 });
 
 const FlightModel = mongoose.model('FlightCreationModel', FlightCreationSchema);

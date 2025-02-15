@@ -6,9 +6,9 @@ require('dotenv').config()
 const mongoose = require('mongoose');
 mongoose.connect(`mongodb+srv://${process.env.MONGO_USER}:${process.env.MONGO_PASS}@tripscluster.ajq0e.mongodb.net/Content?retryWrites=true&w=majority`,
 {
-useNewUrlParser: true,
-useUnifiedTopology: true,
-tlsAllowInvalidCertificates: true
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    tlsAllowInvalidCertificates: true
 });
 
 var db = mongoose.connection;
@@ -57,13 +57,15 @@ app.get("/get/", (request, response) => {
 app.get("/get/flight/:flight_reference", async (request, response) => {
     try {
         async function FlightDataModel() {
-            const FlightDataModel = await FlightCreationModel.findOne({ flight_reference: `${request.params.flight_reference}` })
-    
-            if (FlightDataModel) {
-                return FlightDataModel
+            if (request.params.flight_reference) {
+                // Search for a specific flight reference
+                flightData = await FlightCreationModel.findOne({ flight_reference: flightReference });
             } else {
-                return false
+                // If no flight reference is provided, return all flights
+                flightData = await FlightCreationModel.find();
             }
+
+            return flightData || false;
         }
     
         response.json(await FlightDataModel());
@@ -73,6 +75,47 @@ app.get("/get/flight/:flight_reference", async (request, response) => {
     }
     
 })
+
+app.get("/get/flight/:flight_reference/arrival/:arrival_airport?", async (request, response) => {
+    try {
+        const { flight_reference, arrival_airport } = request.params;
+
+        // Find the flight by reference
+        const flight = await FlightCreationModel.findOne({ flight_reference });
+        if (!flight) {
+            return response.status(404).json({ error: "Flight not found" });
+        }
+
+        // If an arrival airport is specified, find it within the arrivals array
+        if (arrival_airport) {
+            const arrival = flight.arrivals.find(arr => arr.iata === arrival_airport || arr.airport === arrival_airport);
+            if (!arrival) {
+                return response.status(404).json({ error: "Arrival airport not found in flight" });
+            }
+            return response.json(arrival);
+        }
+
+        // If no arrival airport is specified, return all arrivals
+        return response.json(flight.arrivals);
+    } catch (error) {
+        console.error("Error fetching flight arrival:", error);
+        response.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
+// async function FlightDataModel(request) {
+//     const flightReference = request.params.flight_reference;
+
+//     // Try finding by flight_reference first
+//     let flightData = await FlightCreationModel.findOne({ flight_reference: flightReference });
+
+//     // If no result, try finding by departure.airport (inside an array)
+//     if (!flightData) {
+//         flightData = await FlightCreationModel.findOne({ "departure.airport": flightReference });
+//     }
+
+//     return flightData || false;
+// }
 
 app.get("/get/player/:user_id", async (request, response) => {
     try {
@@ -255,9 +298,9 @@ app.post("/create/flight/:flight_reference/arrival/", async (request, response) 
 
 app.post("/create/flight/:flight_reference", async (request, response) => {
     try {
-        const { departure_airport, departure_iata, departure_time_format, dispatcher } = request.body;
+        const { departure_airport, departure_iata, departure_time_format, dispatcher, date_of_event } = request.body;
 
-        if (!departure_airport || !departure_iata || !departure_time_format || dispatcher == null) {
+        if (!departure_airport || !departure_iata || !departure_time_format || !date_of_event || dispatcher == null) {
             return response.status(400).send({ error: "Missing required fields in request body." });
         }
 
@@ -276,6 +319,9 @@ app.post("/create/flight/:flight_reference", async (request, response) => {
                 },
             ],
             dispatcher,
+            date_of_event: [{
+
+            }]
         });
 
         const savedFlight = await NewFlightCreation.save();
