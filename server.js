@@ -89,14 +89,14 @@ app.get("/get/flight/:flight_reference/arrival/:arrival_airport?", async (reques
         });
         
         if (!flight) {
-            return response.status(404).json({ error: "Flight not found" });
+            return false
         }
 
         // If an arrival airport is specified, find it within the arrivals array
         if (arrival_airport) {
             const arrival = flight.arrivals.find(arr => arr.iata === arrival_airport || arr.airport === arrival_airport);
             if (!arrival) {
-                return response.status(404).json({ error: "Arrival airport not found in flight" });
+                return false
             }
             return response.json(arrival);
         }
