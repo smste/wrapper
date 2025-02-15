@@ -59,7 +59,7 @@ app.get("/get/flight/:flight_reference", async (request, response) => {
         async function FlightDataModel() {
             if (request.params.flight_reference) {
                 // Search for a specific flight reference
-                flightData = await FlightCreationModel.findOne({ flight_reference: flightReference });
+                flightData = await FlightCreationModel.findOne({ flight_reference: request.params.flight_reference });
             } else {
                 // If no flight reference is provided, return all flights
                 flightData = await FlightCreationModel.find();
