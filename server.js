@@ -311,9 +311,9 @@ app.post("/create/flight/:flight_reference/arrival/", async (request, response) 
 
 app.post("/create/flight/:flight_reference", async (request, response) => {
     try {
-        const { departure_airport, departure_iata, departure_time_format, dispatcher, date_of_event } = request.body;
+        const { departure_airport, departure_iata, departure_time_format, dispatcher, date_of_event_time, date_of_event_date } = request.body;
 
-        if (!departure_airport || !departure_iata || !departure_time_format || !date_of_event || dispatcher == null) {
+        if (!departure_airport || !departure_iata || !departure_time_format || !date_of_event_time || !date_of_event_date || dispatcher == null) {
             return response.status(400).send({ error: "Missing required fields in request body." });
         }
 
@@ -333,7 +333,8 @@ app.post("/create/flight/:flight_reference", async (request, response) => {
             ],
             dispatcher,
             date_of_event: [{
-
+                time: date_of_event_time,
+                date: date_of_event_date
             }]
         });
 
