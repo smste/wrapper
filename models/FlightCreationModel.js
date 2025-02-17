@@ -5,6 +5,7 @@ const ArrivalCreationSchema = new mongoose.Schema({
     iata: { type: String, required: true, unique: true },
     time_format: { type: String, required: true, unique: true },
     flight_code: { type: String, required: true, unique: true },
+    aircraft: { type: String, required: true, unique: true },
     
     upgrade_availability_business: { type: Boolean, required: true, unique: true },
     upgrade_availability_first: { type: Boolean, required: true, unique: true },

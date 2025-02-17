@@ -270,9 +270,9 @@ app.post("/create/", (request, response) => {
 
 app.post("/create/flight/:flight_reference/arrival/", async (request, response) => {
     try {
-        const { airport_name, iata, time_format, upgrade_availability_business, upgrade_availability_first, upgrade_availability_chairmans } = request.body;
+        const { airport_name, iata, time_format, upgrade_availability_business, upgrade_availability_first, upgrade_availability_chairmans, flight_code, aircraft } = request.body;
 
-        if (!airport_name || !iata || !time_format || upgrade_availability_business == null || upgrade_availability_first == null || upgrade_availability_chairmans == null) {
+        if (!airport_name || !iata || !time_format || upgrade_availability_business == null || flight_code == null || upgrade_availability_first == null || upgrade_availability_chairmans == null || aircraft == null) {
             return response.status(400).send({ error: "Missing required fields in request body." });
         }
 
@@ -296,6 +296,8 @@ app.post("/create/flight/:flight_reference/arrival/", async (request, response) 
             upgrade_availability_business: upgrade_availability_business,
             upgrade_availability_first: upgrade_availability_first,
             upgrade_availability_chairmans: upgrade_availability_chairmans,
+            flight_code: flight_code,
+            aircraft: aircraft,
         };
 
         flight.arrivals.push(newArrival); // Add subdocument
@@ -333,8 +335,8 @@ app.post("/create/flight/:flight_reference", async (request, response) => {
             ],
             dispatcher,
             date_of_event: [{
+                date: date_of_event_date,
                 time: date_of_event_time,
-                date: date_of_event_date
             }]
         });
 
