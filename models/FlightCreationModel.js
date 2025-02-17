@@ -27,7 +27,7 @@ const FlightCreationSchema = new mongoose.Schema({
     departure: [{
         airport: { type: String, required: true, unique: true },
         IATA: { type: String, required: true, unique: true },
-        time_format: { type: Number, required: true, unique: true },
+        time_format: { type: String, required: true, unique: true },
        }],
     dispatcher: { type: String, required: true, unique: true },
     teleportservice_key: { type: String, required: false, unique: true, default: "" },
