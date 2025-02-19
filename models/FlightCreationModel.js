@@ -3,13 +3,13 @@ const mongoose = require('mongoose');
 const ArrivalCreationSchema = new mongoose.Schema({
     airport: { type: String, required: true, unique: true },
     iata: { type: String, required: true, unique: true },
-    time_format: { type: String, required: true, unique: true },
+    time_format: { type: String, required: true, unique: false },
     flight_code: { type: String, required: true, unique: true },
-    aircraft: { type: String, required: true, unique: true },
+    aircraft: { type: String, required: true, unique: false },
     
-    upgrade_availability_business: { type: Boolean, required: true, unique: true },
-    upgrade_availability_first: { type: Boolean, required: true, unique: true },
-    upgrade_availability_chairmans: { type: Boolean, required: true, unique: true },
+    upgrade_availability_business: { type: Boolean, required: true, unique: false },
+    upgrade_availability_first: { type: Boolean, required: true, unique: false },
+    upgrade_availability_chairmans: { type: Boolean, required: true, unique: false },
 })
 
 const PlayerPreferenceSchema = new mongoose.Schema({
@@ -25,15 +25,15 @@ const FlightCreationSchema = new mongoose.Schema({
     arrivals: [ArrivalCreationSchema],
     players: [PlayerPreferenceSchema],
     departure: [{
-        airport: { type: String, required: true, unique: true },
-        IATA: { type: String, required: true, unique: true },
-        time_format: { type: String, required: true, unique: true },
+        airport: { type: String, required: true, unique: false },
+        IATA: { type: String, required: true, unique: false },
+        time_format: { type: String, required: true, unique: false },
        }],
-    dispatcher: { type: String, required: true, unique: true },
-    teleportservice_key: { type: String, required: false, unique: true, default: "" },
+    dispatcher: { type: String, required: true, unique: false },
+    teleportservice_key: { type: String, required: false, unique: false, default: "" },
     date_of_event: [{
-        date: { type: String, required: true, unique: true },
-        time: { type: String, required: true, unique: true },
+        date: { type: String, required: true, unique: false },
+        time: { type: String, required: true, unique: false },
     }]
 });
 
