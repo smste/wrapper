@@ -3,7 +3,8 @@ const express = require('express');
 const verificationController = require('../controllers/verificationController');
 const {
     handleValidationErrors,
-    confirmVerificationValidation // Import the specific validation rules
+    confirmVerificationValidation, // Import the specific validation rules
+    robloxIdParamValidation
 } = require('../middleware/validation'); // Adjust path if needed
 
 const router = express.Router();
