@@ -21,4 +21,5 @@ module.exports = {
     discordGuildId: process.env.DISCORD_GUILD_ID,
     staffRoleId: process.env.STAFF_ROLE_ID,
     apiBaseUrl: process.env.API_BASE_URL,
+    gameServerSecretKey: process.env.GAME_SERVER_SECRET_KEY
 };
