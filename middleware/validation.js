@@ -206,9 +206,18 @@ const updatePlayerPrefsBodyValidation = [
 ];
 
 const confirmVerificationValidation = [
-    body('verificationCode').isString().isLength({ min: 6, max: 6 }).isAlphanumeric().toUpperCase().withMessage('Verification code must be 6 alphanumeric characters.'),
-    body('robloxId').isInt({ gt: 0 }).withMessage('Roblox ID must be a positive integer.')
+    body('verificationCode')
+    .trim()
+    .isString().withMessage('Verification code must be a string.')
+    .isLength({ min: 6, max: 6 }).withMessage('Verification code must be 6 characters long.')
+    .isAlphanumeric().withMessage('Verification code must be alphanumeric.')
+    .toUpperCase(), // Convert to uppercase to match stored code case-insensitively if needed
+    body('robloxId')
+        .isInt({ gt: 0 }).withMessage('Roblox ID must be a positive integer.')
+        .toInt() // Convert to integer type
 ];
+
+
 
 module.exports = {
     handleValidationErrors,

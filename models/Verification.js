@@ -1,6 +1,9 @@
 // models/Verification.js
 const mongoose = require('mongoose');
-const { userDB } = require('../config/database'); // Connect to the USER database
+// Ensure you are connecting to the correct DB instance where user data resides
+// Assuming userDB handles users AND pending verifications for simplicity here.
+// If you want verifications elsewhere, change userDB to the appropriate connection.
+const { userDB } = require('../config/database');
 
 const VerificationSchema = new mongoose.Schema({
     code: { // The unique code given to the user
@@ -31,8 +34,7 @@ const VerificationSchema = new mongoose.Schema({
     expiresAt: { // Automatically delete document after TTL
         type: Date,
         required: true,
-        // Create a TTL index in MongoDB to automatically delete expired records
-        // You might need to create this index manually in your Atlas console or using a migration script:
+        // Ensure a TTL index exists on this field in MongoDB:
         // db.verifications.createIndex( { "expiresAt": 1 }, { expireAfterSeconds: 0 } )
         index: { expires: '0s' },
     },
