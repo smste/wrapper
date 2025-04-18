@@ -1,70 +1,89 @@
-// server.js
+// server.js (Updated and Corrected)
+require('dotenv').config(); // Ensure .env is loaded first!
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const path = require('path'); // Often needed for views/static
 const config = require('./config');
-const apiKeyAuth = require('./middleware/apiKeyAuth');
+const database = require('./config/database'); // Import DB connections for shutdown
+
+// --- Middleware ---
+const apiKeyAuth = require('./middleware/apiKeyAuth'); // Checks X-API-Key
+const gameServerAuth = require('./middleware/gameServerAuth'); // Checks X-GameServer-Key
 const errorHandler = require('./middleware/errorHandler');
+
+// --- Routes ---
 const userRoutes = require('./routes/userRoutes');
 const flightRoutes = require('./routes/flightRoutes');
-const flightPlanRoutes = require('./routes/flightPlanRoutes'); // Import the new routes
+const flightPlanRoutes = require('./routes/flightPlanRoutes');
 const verificationRoutes = require('./routes/verificationRoutes');
-const gameServerAuth = require('./middleware/gameServerAuth');
-require('./config/database'); // Initialize database connections
+
+// Initialize DB Connections (runs when database.js is required)
+// Ensure database.js handles connection logic upon import
 
 const app = express();
 
-// --- Core Middleware ---
-app.use(helmet()); // Set various security HTTP headers
+// --- Global Middleware (Apply to all requests BEFORE routing) ---
+// Basic Security Headers (Adjust CSP as needed for your frontend/CSS)
+app.use(helmet.contentSecurityPolicy({
+    directives: {
+         defaultSrc: ["'self'"],
+         scriptSrc: ["'self'"],
+         styleSrc: ["'self'", "'unsafe-inline'"], // Example, adjust as needed
+        // Add other directives as needed
+    },
+}));
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
 
-// --- Rate Limiting ---
+// Rate Limiting (Apply globally)
 const limiter = rateLimit({
-	windowMs: config.rateLimitWindowMs,
-	max: config.rateLimitMax, // Limit each IP to max requests per windowMs
-	standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-	legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    windowMs: config.rateLimitWindowMs,
+    max: config.rateLimitMax,
     message: 'Too many requests from this IP, please try again after a minute.',
+    standardHeaders: true,
+    legacyHeaders: false,
 });
-app.use(limiter); // Apply the rate limiting middleware to all requests
+app.use(limiter);
 
-// --- API Key Authentication (Apply to all routes below) ---
-app.use(apiKeyAuth);
+// --- Static Files (If serving CSS/JS/Images for website) ---
+// app.use(express.static(path.join(__dirname, 'public'))); // Uncomment if needed
 
-// --- Routes ---
+// --- Template Engine (If serving website pages) ---
+// app.set('view engine', 'ejs');
+// app.set('views', path.join(__dirname, 'views'));
+
+
+// --- Public Routes / Health Check (NO AUTH) ---
 app.get('/', (req, res) => {
     res.status(200).send('API is running.'); // Simple health check endpoint
 });
+// Add any website page routes here if applicable (before auth middleware)
+// app.get('/web/somepage', ...);
 
-app.use('/users', userRoutes);
-app.use('/flights', flightRoutes);
-app.use('/plans', apiKeyAuth, flightPlanRoutes);
+
+// --- Specific Auth Routes ---
+
+// Verification routes - Authenticated ONLY by Game Server Key
+// The 'gameServerAuth' middleware runs ONLY for requests starting with '/verifications'
 app.use('/verifications', gameServerAuth, verificationRoutes);
 
-// --- 404 Handler (Not Found) ---
-// Placed after all routes, catches requests that didnt match any route
+// --- General API Routes (Authenticated by User API Key) ---
+// The 'apiKeyAuth' middleware runs ONLY for requests starting with these paths
+app.use('/users', apiKeyAuth, userRoutes);
+app.use('/flights', apiKeyAuth, flightRoutes);
+app.use('/plans', apiKeyAuth, flightPlanRoutes);
+
+// --- REMOVED global `app.use(apiKeyAuth);` from here ---
+
+
+// --- 404 Handler (Catch-all for routes not matched above) ---
 app.use((req, res, next) => {
+    // Respond with JSON for API-like paths, maybe HTML for others if needed
     res.status(404).json({ error: 'Not Found' });
 });
 
-// --- Centralized Error Handler ---
-// Must be the LAST middleware
+// --- Centralized Error Handler (Must be the LAST middleware) ---
 app.use(errorHandler);
 
 // --- Start Server ---
-const server = app.listen(config.port, () => {
-    console.log(`Server listening on port ${config.port} in ${config.nodeEnv} mode.`);
-    console.log(`API Base URL for Bot: ${config.apiBaseUrl}`); // Log the URL bot should use
-});
-
-// Graceful Shutdown Handling (Optional but Recommended)
-process.on('SIGTERM', () => {
-  console.info('SIGTERM signal received: closing HTTP server');
-  server.close(() => {
-    console.log('HTTP server closed');
-    // Close database connections here if needed
-    mongoose.disconnect(); // Disconnects default connection, manage specific ones if necessary
-    process.exit(0);
-  });
-});
