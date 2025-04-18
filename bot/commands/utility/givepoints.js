@@ -44,7 +44,7 @@ module.exports = {
                 userData = await apiClient.getUserByDiscordId(targetDiscordId);
             } catch (userError) {
                  if (userError.status === 404) {
-                     await interaction.editReply({ content: `Error: Could not find user ${targetUser.toString()}. They need to link their account first.`, flags: InteractionResponseFlags.Ephemeral }); // Ephemeral error
+                     await interaction.editReply({ content: `Error: Could not find user ${targetUser.toString()}. They need to link their account first.`}); // Ephemeral error
                      return;
                  }
                  throw userError; // Re-throw other API errors
@@ -56,7 +56,7 @@ module.exports = {
             const robloxId = userData.robloxId;
 
              if (newPoints < 0) {
-                  await interaction.editReply({ content: `Error: Cannot set points below zero. User ${targetUser.toString()} has ${currentPoints} points, removing ${Math.abs(amount)} would result in ${newPoints}.`, flags: InteractionResponseFlags.Ephemeral }); // Ephemeral error
+                  await interaction.editReply({ content: `Error: Cannot set points below zero. User ${targetUser.toString()} has ${currentPoints} points, removing ${Math.abs(amount)} would result in ${newPoints}.`}); // Ephemeral error
                   return;
              }
 
@@ -82,7 +82,6 @@ module.exports = {
             // Send specific error message ephemerally
             await interaction.editReply({
                 content: `Failed to give points: ${error.message || 'An unknown error occurred.'}`,
-                flags: InteractionResponseFlags.Ephemeral // Error only visible to staff
             });
         }
     },
