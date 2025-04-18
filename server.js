@@ -32,7 +32,14 @@ function setupServer(discordClient) { // Accept the Discord client instance
 
     // --- Global Middleware ---
     // ... (helmet, json, urlencoded, limiter setup) ...
-     app.use(helmet.contentSecurityPolicy({ directives: { /* ... */ } }));
+    app.use(helmet.contentSecurityPolicy({
+        directives: {
+             defaultSrc: ["'self'"],
+             scriptSrc: ["'self'"],
+             styleSrc: ["'self'", "'unsafe-inline'"], // Example, adjust as needed
+            // Add other directives as needed
+        },
+    }));
      app.use(express.json());
      app.use(express.urlencoded({ extended: true }));
      app.use(limiter); // Ensure limiter is defined above
