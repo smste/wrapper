@@ -87,3 +87,30 @@ app.use((req, res, next) => {
 app.use(errorHandler);
 
 // --- Start Server ---
+const server = app.listen(config.port, () => {
+    console.log(`Server listening on port ${config.port} in ${config.nodeEnv} mode.`);
+    // Avoid logging base URL here if it comes from client config anyway
+    // console.log(`API Base URL for Bot/Clients: ${config.apiBaseUrl}`);
+});
+
+// --- Graceful Shutdown Handling ---
+process.on('SIGTERM', async () => { // Make the handler async
+  console.info('SIGTERM signal received: closing HTTP server');
+  server.close(async () => { // Add async here too
+    console.log('HTTP server closed');
+    // --- Close specific Mongoose connections ---
+    try {
+        console.log('Closing MongoDB connections...');
+        // Use Promise.all to close connections concurrently
+        await Promise.all([
+            database.userDB.close(false), // Pass false to prevent forceful close immediately
+            database.flightDB.close(false),
+            database.flightPlanDB.close(false)
+        ]);
+        console.log('MongoDB connections closed.');
+    } catch (err) {
+        console.error('Error closing MongoDB connections:', err);
+    }
+    process.exit(0); // Exit process once connections are closed
+  });
+});
