@@ -1,5 +1,6 @@
 // middleware/validation.js
 const { body, param, query, validationResult } = require('express-validator');
+const { getTimeZone, listTimeZones } = require('date-fns-tz'); // Import for timezone validation
 
 // Middleware to handle validation errors
 const handleValidationErrors = (req, res, next) => {
@@ -218,7 +219,70 @@ const confirmVerificationValidation = [
         .toInt() // Convert to integer type
 ];
 
+// Basic check for YYYY-MM-DD format
+const dateValidation = (field) => body(field).matches(/^\d{4}-\d{2}-\d{2}$/).withMessage(`${field} must be in YYYY-MM-DD format.`);
+// Basic check for HH:mm or HH:mm:ss format
+const timeValidation = (field) => body(field).matches(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/).withMessage(`${field} must be in HH:mm or HH:mm:ss format.`);
+// Validate Timezone string (IANA name or offset)
+const timezoneValidation = (field) => body(field).custom((value) => {
+    try {
+        // Check if it's a valid IANA zone like 'Australia/Sydney'
+        // or handle UTC offsets like '+10:00', '-05:00', 'Z'
+        if (getTimeZone(value) || ['Z', '+00:00', '-00:00'].includes(value) || /^[+-]([01]\d|2[0-3]):([0-5]\d)$/.test(value)) {
+             return true;
+        }
+        // List available zones on error? Maybe too verbose.
+        // const availableZones = listTimeZones();
+        throw new Error(`Invalid timezone. Use IANA name (e.g., Australia/Sydney) or offset (+HH:mm / -HH:mm / Z).`);
+    } catch (e) {
+         throw new Error(`Invalid timezone format: ${e.message}`);
+    }
+}).withMessage('Invalid timezone provided.');
 
+// Validation for updating a Flight (example: dispatcher)
+const updateFlightValidation = [
+    body('dispatcher').optional().isString().trim().notEmpty().withMessage('Dispatcher must be a non-empty string if provided.'),
+    // Add rules for other updatable fields (e.g., date_of_event, ensure you handle timezone)
+    body().custom((value, { req }) => { // Ensure at least one field is passed
+         if (Object.keys(req.body).length === 0) {
+             throw new Error('At least one field (e.g., dispatcher) must be provided to update.');
+         }
+         return true;
+     }),
+];
+
+// Validation for adding/updating an Arrival (includes time parts)
+const arrivalBodyValidation = [
+    body('airport').optional().isString().notEmpty().withMessage('Arrival airport name is required.'), // Optional for PATCH
+    body('scheduledArrivalDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('scheduledArrivalDate must be YYYY-MM-DD.'), // Optional for PATCH
+    body('scheduledArrivalTimeStr').optional().matches(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/).withMessage('scheduledArrivalTimeStr must be HH:mm or HH:mm:ss.'), // Optional for PATCH
+    body('scheduledArrivalTimezone').optional().custom(timezoneValidation().custom).withMessage('scheduledArrivalTimezone is invalid.'), // Optional for PATCH
+    body('flight_code').optional().isString().notEmpty().withMessage('Arrival flight code is required.'), // Optional for PATCH
+    body('aircraft').optional().isString().notEmpty().withMessage('Arrival aircraft is required.'), // Optional for PATCH
+    body('upgrade_availability_business').optional().isBoolean().withMessage('Business upgrade availability must be a boolean.'),
+    body('upgrade_availability_first').optional().isBoolean().withMessage('First class upgrade availability must be a boolean.'),
+    body('upgrade_availability_chairmans').optional().isBoolean().withMessage('Chairman upgrade availability must be a boolean.'),
+    // Add custom check for PATCH to ensure *some* field is provided?
+    body().custom((value, { req }) => {
+         // For PATCH, ensure at least one valid field is present
+         const allowedFields = ['airport', 'scheduledArrivalDate', 'scheduledArrivalTimeStr', 'scheduledArrivalTimezone', 'flight_code', 'aircraft', 'upgrade_availability_business', 'upgrade_availability_first', 'upgrade_availability_chairmans'];
+         if (req.method === 'PATCH' && !allowedFields.some(field => req.body[field] !== undefined)) {
+               throw new Error('At least one field must be provided to update an arrival.');
+         }
+         // For POST (add arrival), check required fields
+          if (req.method === 'POST' && (!req.body.airport || !req.body.scheduledArrivalDate || !req.body.scheduledArrivalTimeStr || !req.body.scheduledArrivalTimezone || !req.body.flight_code || !req.body.aircraft || req.body.upgrade_availability_business === undefined || req.body.upgrade_availability_first === undefined || req.body.upgrade_availability_chairmans === undefined )) {
+               throw new Error('Missing required fields for adding arrival (airport, date, time, timezone, flight_code, aircraft, upgrades).');
+         }
+         return true;
+     }),
+];
+
+// Validation for listing flights (example: pagination)
+const listFlightsValidation = [
+    query('page').optional().isInt({ min: 1 }).toInt().withMessage('Page must be a positive integer.'),
+    query('limit').optional().isInt({ min: 1, max: 100 }).toInt().withMessage('Limit must be between 1 and 100.'),
+    // Add other filters like date range, status etc.
+];
 
 module.exports = {
     handleValidationErrors,
@@ -243,4 +307,7 @@ module.exports = {
     arrivalIataParamValidation,
     updatePlayerPrefsBodyValidation,
     confirmVerificationValidation,
+    listFlightsValidation,
+    updateFlightValidation,
+    arrivalBodyValidation
 };

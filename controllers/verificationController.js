@@ -111,7 +111,7 @@ exports.confirmVerification = async (req, res, next) => {
                  try {
                     const robloxUsername = pendingVerification.robloxUsername || `ID ${pendingVerification.robloxId}`;
                     // Customize your welcome message
-                    const welcomeMessage = `🎉 **Welcome to Qantas Virtual!** 🎉\n\nYour Roblox account (\`${robloxUsername}\`) has been successfully linked to your Discord account. You can now use commands like \`/myprofile\` and others that require a linked account.\n\nEnjoy your journey with us!`;
+                    const welcomeMessage = `**Successfully Linked Account** \n\nYour Roblox account (\`${robloxUsername}\`) has been successfully linked to your Discord account. You can now use commands like \`/myprofile\` and others that require a linked account.\n\nEnjoy your journey with us!\n-# If you did not intend or are not aware of this connection, please contact us through our ticketing system as soon as possible.`;
 
                     await discordClientInstance.users.send(pendingVerification.discordId, welcomeMessage);
                     console.log(`Sent verification success DM to Discord user ${pendingVerification.discordId}`);

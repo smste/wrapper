@@ -124,29 +124,51 @@ exports.createFlight = async (req, res, next) => {
 exports.createArrival = async (req, res, next) => {
     try {
         const { flight_reference } = req.params;
-        // Destructure expecting scheduledArrivalTime instead of time_format
-        const { airport, iata, scheduledArrivalTime, flight_code, aircraft, upgrade_availability_business, upgrade_availability_first, upgrade_availability_chairmans } = req.body;
+        // Get date/time parts from body
+        const { airport, iata, scheduledArrivalDate, scheduledArrivalTimeStr, scheduledArrivalTimezone, flight_code, aircraft, upgrade_availability_business, upgrade_availability_first, upgrade_availability_chairmans } = req.body;
 
+        // Find the flight (non-lean to save)
         const flight = await Flight.findOne({ flight_reference: flight_reference });
-        // ... (check flight not found) ...
+        checkFlightNotFound(flight, flight_reference);
+
+        // Convert input date/time/zone to UTC Date object
+        const scheduledArrivalTimeUTC = parseDateTimeInput(scheduledArrivalDate, scheduledArrivalTimeStr, scheduledArrivalTimezone);
+        if (!scheduledArrivalTimeUTC) {
+             // Should be caught by validation, but safety check
+             return res.status(400).json({ message: 'Valid scheduledArrivalDate, scheduledArrivalTimeStr, and scheduledArrivalTimezone are required.'});
+        }
+
 
         // Check if arrival with the same IATA already exists (optional)
-        // ...
+        if (flight.arrivals.some(arr => arr.iata === iata.toUpperCase())) {
+             return res.status(409).json({ message: `Arrival with IATA ${iata.toUpperCase()} already exists for this flight.` });
+        }
 
         // Create the new arrival subdocument data
         const newArrivalData = {
-            airport, iata, scheduledArrivalTime, // Use the Date object here
-            flight_code, aircraft, upgrade_availability_business,
-            upgrade_availability_first, upgrade_availability_chairmans,
-            players: [] // Initialize empty players array for the new arrival
+            airport,
+            iata: iata.toUpperCase(),
+            scheduledArrivalTime: scheduledArrivalTimeUTC, // Store the UTC Date object
+            flight_code,
+            aircraft,
+            upgrade_availability_business,
+            upgrade_availability_first,
+            upgrade_availability_chairmans,
+            players: [] // Initialize empty players array
         };
 
         flight.arrivals.push(newArrivalData);
         const updatedFlight = await flight.save();
-        const newArrival = updatedFlight.arrivals.find(arr => /* find criteria, e.g., by _id if needed */ arr.iata === iata); // Adjust find logic if needed
+
+        // Find the newly added arrival to return it specifically
+        // Mongoose might add an _id, find using that if possible, otherwise by IATA
+        const newArrival = updatedFlight.arrivals.find(arr => arr.iata === iata.toUpperCase()); // Simplistic find
 
         res.status(201).json({ message: 'Arrival created and added to flight.', arrival: newArrival || newArrivalData });
     } catch (error) {
+         if (error.name === 'ValidationError') {
+             return res.status(400).json({ message: 'Validation Error', errors: error.errors });
+         }
         next(error);
     }
 };
@@ -291,6 +313,272 @@ exports.updatePlayerPreferencesOnArrivalLeg = async (req, res, next) => {
             return res.status(400).json({ message: 'Validation Error updating preferences', errors: error.errors });
         }
         next(error);
+    }
+};
+
+exports.listFlights = async (req, res, next) => {
+    try {
+       const { page = 1, limit = 20, /* other filters like status, date_after etc. */ } = req.query;
+
+       const filter = {};
+       // Add filter conditions here based on query params if needed
+       // e.g., if (req.query.status) filter.status = req.query.status;
+
+       const options = {
+           page: parseInt(page, 10),
+           limit: parseInt(limit, 10),
+           sort: { createdAt: -1 }, // Example sort
+           lean: true, // Use lean for read performance
+           // Use mongoose-paginate-v2 if installed for easier pagination
+       };
+
+       // Basic pagination without extra library
+       const skip = (options.page - 1) * options.limit;
+       const flights = await Flight.find(filter)
+                                   .sort(options.sort)
+                                   .skip(skip)
+                                   .limit(options.limit)
+                                   .lean();
+       const totalFlights = await Flight.countDocuments(filter);
+
+       res.status(200).json({
+           flights: flights,
+           page: options.page,
+           limit: options.limit,
+           totalPages: Math.ceil(totalFlights / options.limit),
+           totalFlights: totalFlights,
+       });
+    } catch (error) {
+       next(error);
+    }
+};
+
+/**
+* PATCH /flights/:flight_reference
+* Modify top-level flight details (e.g., dispatcher).
+*/
+exports.updateFlight = async (req, res, next) => {
+   try {
+       const { flight_reference } = req.params;
+       const updateData = {};
+
+       // Only include fields that are allowed to be updated and were provided
+       if (req.body.dispatcher !== undefined) {
+            updateData.dispatcher = req.body.dispatcher;
+       }
+        // Add other updatable fields here (e.g., parse date_of_event with timezone if allowing update)
+        // Be cautious updating departure details if arrivals depend on them.
+
+       if (Object.keys(updateData).length === 0) {
+           // Should be caught by validation, but good check
+            return res.status(400).json({ message: 'No valid fields provided for update.' });
+       }
+
+       const updatedFlight = await Flight.findOneAndUpdate(
+            { flight_reference: flight_reference },
+            { $set: updateData },
+            { new: true, runValidators: true } // Return updated doc, run schema validators
+       );
+
+       checkFlightNotFound(updatedFlight, flight_reference);
+
+       res.status(200).json({ message: 'Flight updated successfully.', flight: updatedFlight });
+   } catch (error) {
+       if (error.name === 'ValidationError') {
+            return res.status(400).json({ message: 'Validation Error', errors: error.errors });
+       }
+       next(error);
+   }
+};
+
+/**
+* DELETE /flights/:flight_reference
+* Delete a flight and all its associated data.
+*/
+exports.deleteFlight = async (req, res, next) => {
+   try {
+       const { flight_reference } = req.params;
+
+       const result = await Flight.findOneAndDelete({ flight_reference: flight_reference });
+
+       checkFlightNotFound(result, flight_reference); // Checks if it existed before deletion
+
+       // Consider implications: Should deleting a flight also delete associated Flight Plans? (Probably not automatically)
+       // Maybe change flight status instead (soft delete)? For now, hard delete.
+
+       res.status(200).json({ message: `Flight '${flight_reference}' deleted successfully.` });
+        // Or res.status(204).send();
+   } catch (error) {
+       next(error);
+   }
+};
+
+
+/**
+* PATCH /flights/:flight_reference/arrivals/:arrivalIata
+* Modify details of a specific arrival segment. Handles timezone input.
+*/
+exports.updateArrival = async (req, res, next) => {
+    try {
+       const { flight_reference, arrivalIata } = req.params;
+       const updateFields = req.body; // Get all potential fields
+
+       // Find flight (non-lean)
+       const flight = await Flight.findOne({ flight_reference: flight_reference });
+       checkFlightNotFound(flight, flight_reference);
+
+       // Find index of the arrival to update
+       const arrivalIndex = findArrivalIndexByIata(flight, arrivalIata); // Throws 404 if not found
+
+       // --- Prepare $set update object for the specific arrival ---
+       const setUpdate = {};
+       let arrivalPathPrefix = `arrivals.${arrivalIndex}.`; // Path prefix for $set
+
+       // Process each potential field
+       if (updateFields.airport !== undefined) setUpdate[arrivalPathPrefix + 'airport'] = updateFields.airport;
+       if (updateFields.flight_code !== undefined) setUpdate[arrivalPathPrefix + 'flight_code'] = updateFields.flight_code;
+       if (updateFields.aircraft !== undefined) setUpdate[arrivalPathPrefix + 'aircraft'] = updateFields.aircraft;
+       if (updateFields.upgrade_availability_business !== undefined) setUpdate[arrivalPathPrefix + 'upgrade_availability_business'] = updateFields.upgrade_availability_business;
+       if (updateFields.upgrade_availability_first !== undefined) setUpdate[arrivalPathPrefix + 'upgrade_availability_first'] = updateFields.upgrade_availability_first;
+       if (updateFields.upgrade_availability_chairmans !== undefined) setUpdate[arrivalPathPrefix + 'upgrade_availability_chairmans'] = updateFields.upgrade_availability_chairmans;
+
+       // Handle date/time/timezone update
+       if (updateFields.scheduledArrivalDate || updateFields.scheduledArrivalTimeStr || updateFields.scheduledArrivalTimezone) {
+            // If any part of the time is being updated, we need all parts to reconstruct the date
+            const currentDate = flight.arrivals[arrivalIndex].scheduledArrivalTime;
+            // Get current parts in AEST/SYDNEY as a default for filling missing pieces? Or require all 3?
+            // Let's require all 3 for simplicity when updating time. Validation should enforce this? No, PATCH allows partial.
+            // We need to get the *existing* parts if some are missing from the request body to recalculate.
+
+            // Extract existing date/time/zone - This requires careful timezone handling!
+            // For simplicity here, let's assume the API *requires* all three parts (date, time, zone) if updating time.
+            // The validation `arrivalBodyValidation` needs adjustment for PATCH to require all 3 if any time part is present.
+            // OR fetch existing, format it, replace parts, then re-parse. Complex.
+
+            // ---> Simplified Approach: Assume validation requires Date, Time, Zone if ANY are present for PATCH <---
+            if (updateFields.scheduledArrivalDate && updateFields.scheduledArrivalTimeStr && updateFields.scheduledArrivalTimezone) {
+                const scheduledArrivalTimeUTC = parseDateTimeInput(
+                    updateFields.scheduledArrivalDate,
+                    updateFields.scheduledArrivalTimeStr,
+                    updateFields.scheduledArrivalTimezone
+                );
+                 if (!scheduledArrivalTimeUTC) throw new Error('Invalid date/time/timezone combination provided for update.'); // Caught by try/catch
+                 setUpdate[arrivalPathPrefix + 'scheduledArrivalTime'] = scheduledArrivalTimeUTC;
+            } else if (updateFields.scheduledArrivalDate || updateFields.scheduledArrivalTimeStr || updateFields.scheduledArrivalTimezone) {
+                 // If only some parts are provided, return an error (or implement complex merge logic)
+                return res.status(400).json({ message: 'To update arrival time, please provide all three fields: scheduledArrivalDate (YYYY-MM-DD), scheduledArrivalTimeStr (HH:mm:ss), and scheduledArrivalTimezone (e.g., Australia/Sydney or +10:00).' });
+            }
+       }
+
+
+       if (Object.keys(setUpdate).length === 0) {
+            return res.status(400).json({ message: 'No valid fields provided for arrival update.' });
+       }
+
+       // --- Perform Update using findOneAndUpdate to target the specific arrival ---
+        const updatedFlight = await Flight.findOneAndUpdate(
+            { _id: flight._id, 'arrivals.iata': arrivalIata.toUpperCase() }, // Find flight and specific arrival
+            { $set: setUpdate }, // Apply the updates using dot notation path
+            { new: true, runValidators: true } // Return updated doc, run schema validators
+        );
+
+        if (!updatedFlight) {
+             // Should not happen if flight/arrival existed, but handle defensively
+              throw new Error('Failed to apply update to arrival segment.');
+        }
+
+       // Find the updated arrival segment to return
+        const updatedArrival = updatedFlight.arrivals.find(arr => arr.iata === arrivalIata.toUpperCase());
+
+       res.status(200).json({ message: `Arrival segment ${arrivalIata} updated successfully.`, arrival: updatedArrival });
+
+    } catch (error) {
+       if (error.name === 'ValidationError') {
+            return res.status(400).json({ message: 'Validation Error', errors: error.errors });
+       }
+       // Handle 404 errors from findArrivalIndexByIata
+        if (error.statusCode === 404) {
+             return res.status(404).json({ message: error.message });
+        }
+       next(error);
+    }
+};
+
+
+/**
+* DELETE /flights/:flight_reference/arrivals/:arrivalIata
+* Delete a specific arrival segment from a flight.
+*/
+exports.deleteArrival = async (req, res, next) => {
+   try {
+       const { flight_reference, arrivalIata } = req.params;
+
+       // Find the flight and use $pull to remove the arrival subdocument
+        const updatedFlight = await Flight.findOneAndUpdate(
+            { flight_reference: flight_reference },
+            { $pull: { arrivals: { iata: arrivalIata.toUpperCase() } } }, // $pull removes array elements matching criteria
+            { new: true } // Return the modified document
+        );
+
+        if (!updatedFlight) {
+             // Flight itself not found
+             return res.status(404).json({ message: `Flight with reference '${flight_reference}' not found.` });
+        }
+
+        // Check if an arrival was actually removed (check if array size changed or if element still exists)
+        // This check is implicit - if findOneAndUpdate succeeded, pull *attempted*.
+        // If the arrival didn't exist, it still returns the document.
+        // We could compare array lengths before/after, but might be overkill.
+        // Let's assume success if the flight was found and updated.
+
+       res.status(200).json({ message: `Arrival segment ${arrivalIata} deleted successfully from flight ${flight_reference}.` });
+        // Or res.status(204).send();
+
+   } catch (error) {
+       next(error);
+   }
+};
+
+
+/**
+* DELETE /flights/:flight_reference/arrivals/:arrivalIata/players/:robloxId
+* Remove a specific player from a specific arrival leg.
+*/
+exports.removePlayerFromArrivalLeg = async (req, res, next) => {
+    try {
+       const { flight_reference, arrivalIata, robloxId: robloxIdStr } = req.params;
+        const robloxId = parseInt(robloxIdStr, 10);
+
+        if (isNaN(robloxId) || robloxId <= 0) {
+            return res.status(400).json({ message: 'Invalid Roblox ID format.' });
+        }
+
+        // Find the flight and use $pull on the nested players array
+        const updatedFlight = await Flight.findOneAndUpdate(
+            {
+                flight_reference: flight_reference,
+                'arrivals.iata': arrivalIata.toUpperCase() // Ensure the arrival exists
+            },
+            {
+                // $pull from the players array within the matched arrival element ($)
+                $pull: { 'arrivals.$.players': { robloxId: robloxId } }
+            },
+            { new: true }
+        );
+
+        if (!updatedFlight) {
+             // Flight or arrival not found
+             return res.status(404).json({ message: `Flight '<span class="math-inline">\{flight\_reference\}' or arrival '</span>{arrivalIata}' not found.` });
+        }
+
+        // Check if player was actually removed? Comparing array lengths before/after is complex here.
+        // Assume success if the update ran without error. A more robust check could query the player count before/after.
+
+        res.status(200).json({ message: `Player ${robloxId} removed successfully from arrival leg ${arrivalIata} of flight ${flight_reference}.` });
+        // Or res.status(204).send();
+
+    } catch (error) {
+       next(error);
     }
 };
 

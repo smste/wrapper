@@ -122,6 +122,12 @@ class ApiClient {
     // --- Flight Methods ---
     // =========================================
 
+    async listFlights(params = {}) { // params = { page: 1, limit: 20, status: 'Planned', ... }
+        const queryParams = new URLSearchParams(params).toString();
+        const url = `/flights${queryParams ? '?' + queryParams : ''}`;
+        return this.client.get(url);
+    }
+
     async getFlight(flightReference) {
         if (!flightReference || typeof flightReference !== 'string') {
              return Promise.reject({ status: 400, message: 'Invalid flight reference provided.' });
@@ -144,6 +150,19 @@ class ApiClient {
         return this.client.post(`/flights/${encodeURIComponent(flightReference)}`, payload);
     }
 
+    async updateFlight(flightReference, updateData) {
+        if (!flightReference) return Promise.reject({ status: 400, message: 'Flight reference is required.' });
+        if (!updateData || Object.keys(updateData).length === 0) {
+             return Promise.reject({ status: 400, message: 'Update data is required.' });
+        }
+        return this.client.patch(`/flights/${encodeURIComponent(flightReference)}`, updateData);
+    }
+
+    async deleteFlight(flightReference) {
+        if (!flightReference) return Promise.reject({ status: 400, message: 'Flight reference is required.' });
+        return this.client.delete(`/flights/${encodeURIComponent(flightReference)}`);
+    }
+
     async getFlightArrivals(flightReference, iata = null) {
          if (!flightReference || typeof flightReference !== 'string') {
              return Promise.reject({ status: 400, message: 'Invalid flight reference provided.' });
@@ -159,15 +178,29 @@ class ApiClient {
     }
 
     async createFlightArrival(flightReference, arrivalData) {
-         if (!flightReference || typeof flightReference !== 'string') {
-             return Promise.reject({ status: 400, message: 'Invalid flight reference provided.' });
-        }
-         if (!arrivalData || typeof arrivalData !== 'object') {
+        if (!flightReference) return Promise.reject({ status: 400, message: 'Flight reference is required.' });
+        if (!arrivalData || typeof arrivalData !== 'object') {
              return Promise.reject({ status: 400, message: 'Arrival data object is required.' });
          }
-         // Expects full arrival data including scheduledArrivalTime (ISO string)
+         // Remember: send scheduledArrivalTime parts (Date, TimeStr, Timezone)
         return this.client.post(`/flights/${encodeURIComponent(flightReference)}/arrivals`, arrivalData);
     }
+
+    async updateArrival(flightReference, arrivalIata, updateData) {
+        if (!flightReference || !arrivalIata) return Promise.reject({ status: 400, message: 'Flight reference and arrival IATA are required.' });
+        if (!updateData || Object.keys(updateData).length === 0) {
+             return Promise.reject({ status: 400, message: 'Update data is required.' });
+        }
+         // Remember: If updating time, send all 3 parts (Date, TimeStr, Timezone)
+        const url = `/flights/<span class="math-inline">\{encodeURIComponent\(flightReference\)\}/arrivals/</span>{encodeURIComponent(arrivalIata.toUpperCase())}`;
+        return this.client.patch(url, updateData);
+    }
+
+    async deleteArrival(flightReference, arrivalIata) {
+        if (!flightReference || !arrivalIata) return Promise.reject({ status: 400, message: 'Flight reference and arrival IATA are required.' });
+       const url = `/flights/<span class="math-inline">\{encodeURIComponent\(flightReference\)\}/arrivals/</span>{encodeURIComponent(arrivalIata.toUpperCase())}`;
+       return this.client.delete(url);
+   }
 
     async addPlayerToArrivalLeg(flightReference, arrivalIata, robloxId, preferences = {}) {
         if (!flightReference || !arrivalIata || !robloxId) {
@@ -200,6 +233,18 @@ class ApiClient {
         const url = `/flights/${encodeURIComponent(flightReference)}/arrivals/${encodeURIComponent(arrivalIata.toUpperCase())}/players/${robloxId}/preferences`;
         return this.client.patch(url, preferences); // Use PATCH for updates
     }
+
+    async removePlayerFromArrivalLeg(flightReference, arrivalIata, robloxId) {
+        if (!flightReference || !arrivalIata || !robloxId) return Promise.reject({ status: 400, message: 'Flight reference, arrival IATA, and Roblox ID are required.' });
+        if (typeof robloxId !== 'number' || robloxId <= 0) {
+            return Promise.reject({ status: 400, message: 'Invalid Roblox ID provided.' });
+        }
+        if (typeof arrivalIata !== 'string' || arrivalIata.length !== 3) {
+            return Promise.reject({ status: 400, message: 'Invalid Arrival IATA format provided.' });
+        }
+       const url = `/flights/<span class="math-inline">\{encodeURIComponent\(flightReference\)\}/arrivals/</span>{encodeURIComponent(arrivalIata.toUpperCase())}/players/${robloxId}`;
+       return this.client.delete(url);
+   }
 
     // =========================================
     // --- Flight Plan Methods ---

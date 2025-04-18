@@ -5,15 +5,20 @@ const {
     handleValidationErrors,
     addPlayerToLegValidation,
     flightReferenceParamValidation,
+    updateFlightValidation, // New
+    arrivalBodyValidation,  // New/Modified
+    listFlightsValidation,  // New
     arrivalIataParamValidation,
     flightRefValidation,
     robloxIdParamValidation,
     updatePlayerPrefsBodyValidation,
     createFlightValidation,
-    createArrivalValidation
+    // createArrivalValidation
 } = require('../middleware/validation');
 
 const router = express.Router();
+
+router.get('/', listFlightsValidation, handleValidationErrors, flightController.listFlights);
 
 // --- Flight Operations ---
 
@@ -23,29 +28,23 @@ router.get('/:flight_reference', flightRefValidation, handleValidationErrors, fl
 // POST /flights/:flight_reference - Create a new flight
 router.post('/:flight_reference', createFlightValidation, handleValidationErrors, flightController.createFlight);
 
+// PATCH /flights/:flight_reference (Update)
+router.patch('/:flight_reference', flightReferenceParamValidation, updateFlightValidation, handleValidationErrors, flightController.updateFlight);
+
+// DELETE /flights/:flight_reference (Delete)
+router.delete('/:flight_reference', flightReferenceParamValidation, handleValidationErrors, flightController.deleteFlight);
+
 // --- Arrival Operations ---
-
-const { iataParamValidation } = require('../middleware/validation'); // Assuming you add this validation
-router.get(
-    '/:flight_reference/arrivals/:iata', // Notice: No '?' here
-    flightRefValidation,
-    iataParamValidation, // Add validation for the required iata param
-    handleValidationErrors,
-    flightController.getFlightArrivals // This controller needs to handle the required param
-);
-
-// GET /flights/:flight_reference/arrivals - Get all arrivals for the flight (No :iata)
-// This route will handle requests like /flights/FL123/arrivals/
-router.get(
-    '/:flight_reference/arrivals/', // Add trailing slash for consistency if desired, or omit if not needed
-    flightRefValidation,
-    handleValidationErrors,
-    flightController.getFlightArrivals // This controller needs to handle the case where req.params.iata is undefined
-);
-
-
-// POST /flights/:flight_reference/arrivals - Create a new arrival for a flight (remains the same)
-router.post('/:flight_reference/arrivals', createArrivalValidation, handleValidationErrors, flightController.createArrival);
+// POST /flights/:flight_reference/arrivals (Add Arrival) - Uses new validation
+router.post('/:flight_reference/arrivals', flightReferenceParamValidation, arrivalBodyValidation, handleValidationErrors, flightController.createArrival);
+// GET /flights/:flight_reference/arrivals/:iata? (Read Arrivals) - Keep existing route(s) for this
+// Assuming the split route version from earlier:
+router.get('/:flight_reference/arrivals/:iata', flightReferenceParamValidation, arrivalIataParamValidation, handleValidationErrors, flightController.getFlightArrivals);
+router.get('/:flight_reference/arrivals/', flightReferenceParamValidation, handleValidationErrors, flightController.getFlightArrivals); // Handles no IATA case
+// PATCH /flights/:flight_reference/arrivals/:arrivalIata (Update Arrival) - Uses new validation
+router.patch('/:flight_reference/arrivals/:arrivalIata', flightReferenceParamValidation, arrivalIataParamValidation, arrivalBodyValidation, handleValidationErrors, flightController.updateArrival);
+// DELETE /flights/:flight_reference/arrivals/:arrivalIata (Delete Arrival)
+router.delete('/:flight_reference/arrivals/:arrivalIata', flightReferenceParamValidation, arrivalIataParamValidation, handleValidationErrors, flightController.deleteArrival);
 
 // --- Player Operations within a Flight ---
 
@@ -55,23 +54,12 @@ router.post('/:flight_reference/arrivals', createArrivalValidation, handleValida
 // POST /flights/:flight_reference/players/:robloxId/preferences - Update player preferences on flight
 // router.post('/:flight_reference/players/:robloxId/preferences', updatePlayerPreferencesValidation, handleValidationErrors, flightController.updatePlayerPreferences);
 
-router.post(
-    '/:flight_reference/arrivals/:arrivalIata/players/:robloxId',
-    addPlayerToLegValidation,   // Apply validation for params and optional body
-    handleValidationErrors,     // Handle errors
-    flightController.addPlayerToArrivalLeg // Link to new controller
-);
-
-router.patch(
-    '/:flight_reference/arrivals/:arrivalIata/players/:robloxId/preferences',
-    [ // Apply multiple validation middlewares in an array
-        ...flightReferenceParamValidation,
-        ...arrivalIataParamValidation,
-        ...robloxIdParamValidation,
-        ...updatePlayerPrefsBodyValidation // Validate body content
-    ],
-    handleValidationErrors, // Handle errors from all preceding validators
-    flightController.updatePlayerPreferencesOnArrivalLeg // Link to new controller
-);
+// --- Player Operations within a Flight Leg ---
+// POST /flights/:flight_reference/arrivals/:arrivalIata/players/:robloxId (Add Player)
+router.post('/:flight_reference/arrivals/:arrivalIata/players/:robloxId', addPlayerToLegValidation, handleValidationErrors, flightController.addPlayerToArrivalLeg);
+// PATCH /flights/:flight_reference/arrivals/:arrivalIata/players/:robloxId/preferences (Update Prefs)
+router.patch('/:flight_reference/arrivals/:arrivalIata/players/:robloxId/preferences', flightReferenceParamValidation, arrivalIataParamValidation, robloxIdParamValidation, updatePlayerPrefsBodyValidation, handleValidationErrors, flightController.updatePlayerPreferencesOnArrivalLeg);
+// DELETE /flights/:flight_reference/arrivals/:arrivalIata/players/:robloxId (Remove Player)
+router.delete('/:flight_reference/arrivals/:arrivalIata/players/:robloxId', flightReferenceParamValidation, arrivalIataParamValidation, robloxIdParamValidation, handleValidationErrors, flightController.removePlayerFromArrivalLeg);
 
 module.exports = router;
