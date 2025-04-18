@@ -3,6 +3,16 @@ const config = require('../config'); // Your config object loading .env
 
 const gameServerAuth = (req, res, next) => {
     const providedKey = req.header('X-GameServer-Key'); // Read the header
+    const expectedKey = config.gameServerSecretKey;
+
+    // --- Add Logs ---
+    console.log(`[GameServerAuth] Request to: ${req.originalUrl}`);
+    console.log(`[GameServerAuth] Expected Key Loaded from config?: ${!!expectedKey}`); // True if loaded
+    console.log(`[GameServerAuth] Provided Key Header Received: ${providedKey ? 'Exists' : 'MISSING'}`);
+    // Avoid logging keys directly if possible, but check comparison result
+    const keysMatch = (providedKey && expectedKey && providedKey === expectedKey);
+    console.log(`[GameServerAuth] Keys Match?: ${keysMatch}`);
+    // --- End Logs ---
 
     if (!config.gameServerSecretKey) {
         console.error("GAME_SERVER_SECRET_KEY is not configured on the API server.");
