@@ -1,45 +1,55 @@
 // bot/commands/utility/points.js
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const axios = require('axios');
-const config = require('../../../config'); // Adjust path
+const ApiClient = require('../../../apiClient'); // Adjust path if needed
+const config = require('../../../config');    // Adjust path if needed
+
+// Instantiate API Client for this command
+const apiClient = new ApiClient(config.apiBaseUrl, config.apiKey);
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('points')
-        .setDescription('Checks your current points balance.'),
+        .setDescription('Checks the points balance for yourself or another user.')
+        .addUserOption(option => // Optional user argument
+            option.setName('user')
+                .setDescription('The user whose points you want to check (defaults to yourself).')
+                .setRequired(false)),
     async execute(interaction) {
-        await interaction.deferReply({ ephemeral: true }); // Defer reply, make it visible only to user
+        // Defer publicly
+        await interaction.deferReply();
 
-        const discordId = interaction.user.id;
+        // Determine the target user
+        const targetUser = interaction.options.getUser('user') || interaction.user;
+        const targetDiscordId = targetUser.id;
 
         try {
-            // 1. Find user by Discord ID in the User DB via API
-            // We need an API endpoint for this. Let's assume we add:
-            // GET /users/discord/:discordId
-            const response = await axios.get(`<span class="math-inline">\{config\.apiBaseUrl\}/users/discord/</span>{discordId}`, {
-                headers: { 'X-API-Key': config.apiKey }
-            });
+            // Get user data via API using Discord ID
+            const userData = await apiClient.getUserByDiscordId(targetDiscordId);
 
-            const userData = response.data;
-
+            // Build success embed
             const embed = new EmbedBuilder()
-                .setColor(0x0099FF)
-                .setTitle(`${interaction.user.username}'s Points`)
-                .setDescription(`You currently have **${userData.points}** points.`)
+                .setColor(0x0099FF) // Blue color
+                .setTitle(`${targetUser.username}'s Points Balance`)
+                .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
+                .setDescription(`User ${targetUser.toString()} currently has **${userData.points}** points.`)
+                .addFields({ name: 'Linked Roblox ID', value: `\`${userData.robloxId}\``, inline: true })
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [embed] });
 
         } catch (error) {
-            console.error("Error fetching points:", error.response?.data || error.message);
-            let errorMessage = 'Could not fetch your points. Please try again later.';
-             if (error.response?.status === 404) {
-                errorMessage = 'Could not find your account. Make sure your Discord is linked.';
-                // TODO: Add instructions on how to link (e.g., "/link command")
-             } else if (error.response?.data?.error) {
-                errorMessage = `Error: ${error.response.data.error}`;
-             }
-             await interaction.editReply({ content: errorMessage });
+            console.error(`Error fetching points for ${targetDiscordId}:`, error);
+            let userErrorMessage;
+
+            if (error && error.status === 404) {
+                userErrorMessage = `Could not find a profile linked to ${targetUser.toString()}. They may need to link their account using \`/link\`.`;
+            } else if (error && error.message) {
+                userErrorMessage = `Error fetching points: ${error.message}`;
+            } else {
+                userErrorMessage = 'An unexpected error occurred while fetching points.';
+            }
+            // Send error publicly
+            await interaction.editReply({ content: userErrorMessage });
         }
     },
 };

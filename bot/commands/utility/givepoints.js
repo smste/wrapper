@@ -1,84 +1,89 @@
 // bot/commands/utility/givepoints.js
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
-const axios = require('axios');
-const config = require('../../../config'); // Adjust path
+const { SlashCommandBuilder, EmbedBuilder, InteractionResponseFlags, PermissionsBitField } = require('discord.js');
+const ApiClient = require('../../../apiClient'); // Adjust path
+const config = require('../../../config');    // Adjust path
+
+const apiClient = new ApiClient(config.apiBaseUrl, config.apiKey);
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('givepoints')
-        .setDescription('[Staff Only] Gives points to a user.')
+        .setDescription('[Staff Only] Gives points to a user (use negative amount to remove).')
+        .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild) // Example permission check
         .addUserOption(option =>
             option.setName('user')
                 .setDescription('The user to give points to.')
                 .setRequired(true))
         .addIntegerOption(option =>
             option.setName('amount')
-                .setDescription('The amount of points to give (can be negative to remove).')
-                .setRequired(true))
-         // .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild) // Alternative/additional check
-        ,
+                .setDescription('Amount of points to give/remove (e.g., 100 or -50).')
+                .setRequired(true)),
     async execute(interaction) {
-         await interaction.deferReply({ ephemeral: false }); // Public reply
-
-         // --- Permission Check ---
-         if (!config.staffRoleId) {
-              console.error("STAFF_ROLE_ID is not set in .env");
-              return interaction.editReply({ content: 'Command configuration error: Staff role not defined.', ephemeral: true });
-         }
-         // Check if the user has the staff role
-         if (!interaction.member.roles.cache.has(config.staffRoleId)) {
-             return interaction.editReply({ content: 'You do not have permission to use this command.', ephemeral: true });
-         }
+        // Permission Check (Using role ID from config)
+        if (!config.staffRoleId) {
+             console.error("STAFF_ROLE_ID is not set in .env");
+             return interaction.reply({ content: 'Command configuration error: Staff role not defined.', ephemeral: true });
+        }
+        if (!interaction.member.roles.cache.has(config.staffRoleId)) {
+            // You can optionally use setDefaultMemberPermissions above as well/instead
+            return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+        }
 
         const targetUser = interaction.options.getUser('user');
         const amount = interaction.options.getInteger('amount');
         const targetDiscordId = targetUser.id;
+        const staffUser = interaction.user;
+
+        // Defer publicly for the potential success message
+        await interaction.deferReply();
 
         try {
-             // 1. Find user by Discord ID via API (needs the GET /users/discord/:discordId endpoint)
-             let userResponse;
-             try {
-                 userResponse = await axios.get(`<span class="math-inline">\{config\.apiBaseUrl\}/users/discord/</span>{targetDiscordId}`, {
-                     headers: { 'X-API-Key': config.apiKey }
-                 });
-             } catch (findError) {
-                 if (findError.response?.status === 404) {
-                     return interaction.editReply({ content: `User ${targetUser.username} not found or not linked. Cannot give points.` });
+            // 1. Get target user's current data (need robloxId and current points)
+            let userData;
+            try {
+                userData = await apiClient.getUserByDiscordId(targetDiscordId);
+            } catch (userError) {
+                 if (userError.status === 404) {
+                     await interaction.editReply({ content: `Error: Could not find user ${targetUser.toString()}. They need to link their account first.`, flags: InteractionResponseFlags.Ephemeral }); // Ephemeral error
+                     return;
                  }
-                 throw findError; // Re-throw other find errors
+                 throw userError; // Re-throw other API errors
+            }
+
+            // 2. Calculate new points total
+            const currentPoints = userData.points;
+            const newPoints = currentPoints + amount;
+            const robloxId = userData.robloxId;
+
+             if (newPoints < 0) {
+                  await interaction.editReply({ content: `Error: Cannot set points below zero. User ${targetUser.toString()} has ${currentPoints} points, removing ${Math.abs(amount)} would result in ${newPoints}.`, flags: InteractionResponseFlags.Ephemeral }); // Ephemeral error
+                  return;
              }
 
-             const userData = userResponse.data;
-             const currentPoints = userData.points;
-             const newPoints = currentPoints + amount; // Calculate new total
+            // 3. Update points via API (using setUserPoints which *sets* the total)
+            await apiClient.setUserPoints(robloxId, newPoints);
 
-             // 2. Update points via API (needs PUT or PATCH /users/:robloxId/points or similar)
-             // Using POST /users/:robloxId/points which SETS points
-             await axios.post(`<span class="math-inline">\{config\.apiBaseUrl\}/users/</span>{userData.robloxId}/points`,
-                 { points: newPoints }, // Send the *new total* points
-                 { headers: { 'X-API-Key': config.apiKey } }
-             );
-
-             const embed = new EmbedBuilder()
+            // 4. Success! Edit the public deferred reply
+            const embed = new EmbedBuilder()
                 .setColor(0x00FF00) // Green for success
-                .setTitle('Points Updated')
-                .setDescription(`<span class="math-inline">\{interaction\.user\.username\} gave \*\*</span>{amount}** points to ${targetUser.username}.`)
+                .setTitle('Points Awarded/Removed')
+                .setDescription(`${staffUser.toString()} ${amount >= 0 ? 'gave' : 'removed'} **${Math.abs(amount)}** point${Math.abs(amount) !== 1 ? 's' : ''} ${amount >= 0 ? 'to' : 'from'} ${targetUser.toString()}.`)
                 .addFields(
-                    { name: 'User', value: `<span class="math-inline">\{targetUser\.toString\(\)\} \(</span>{targetUser.username})`, inline: true },
-                    { name: 'Points Change', value: `<span class="math-inline">\{amount \> 0 ? '\+' \: ''\}</span>{amount}`, inline: true },
-                    { name: 'New Balance', value: `${newPoints}`, inline: true }
+                    { name: 'User', value: `${targetUser.toString()}`, inline: true },
+                    { name: 'Points Change', value: `${amount > 0 ? '+' : ''}${amount}`, inline: true },
+                    { name: 'New Balance', value: `**${newPoints}**`, inline: true }
                 )
                 .setTimestamp();
 
-             await interaction.editReply({ embeds: [embed] });
+            await interaction.editReply({ embeds: [embed] }); // Public success message
 
         } catch (error) {
-             console.error("Error giving points:", error.response?.data || error.message);
-             let errorMessage = `Failed to give points to ${targetUser.username}. Please try again later.`;
-             if (error.response?.data?.error) {
-                 errorMessage = `Error: ${error.response.data.error}`;
-             }
-             await interaction.editReply({ content: errorMessage, ephemeral: true }); // Make error ephemeral
+            console.error(`Error in /givepoints by ${staffUser.id} for ${targetDiscordId}:`, error);
+            // Send specific error message ephemerally
+            await interaction.editReply({
+                content: `Failed to give points: ${error.message || 'An unknown error occurred.'}`,
+                flags: InteractionResponseFlags.Ephemeral // Error only visible to staff
+            });
         }
     },
 };
