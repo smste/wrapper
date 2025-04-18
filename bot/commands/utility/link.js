@@ -28,6 +28,7 @@ module.exports = {
         await interaction.deferReply();
 
         const discordId = interaction.user.id;
+        const discordUsernameForStorage = interaction.user.username;
         const requestedUsername = interaction.options.getString('roblox_username');
 
         try {
