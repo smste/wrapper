@@ -11,7 +11,7 @@ module.exports = {
         .setName('myprofile')
         .setDescription('View your linked profile details (Roblox ID, Points).'),
     async execute(interaction) {
-        await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
+        await interaction.deferReply();
         const discordId = interaction.user.id;
         const discordUsername = interaction.user.username;
 

@@ -25,7 +25,7 @@ module.exports = {
                 .setDescription('Your exact Roblox username.')
                 .setRequired(true)),
     async execute(interaction) {
-        await interaction.deferReply({ flags: InteractionResponseFlags.Ephemeral });
+        await interaction.deferReply();
 
         const discordId = interaction.user.id;
         const requestedUsername = interaction.options.getString('roblox_username');
