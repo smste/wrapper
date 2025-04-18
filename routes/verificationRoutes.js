@@ -17,4 +17,11 @@ router.post(
     verificationController.confirmVerification // Call the controller function
 );
 
+router.get(
+    '/pending/:robloxId',
+    robloxIdParamValidation,    // Validate the robloxId parameter
+    handleValidationErrors,     // Handle validation errors
+    verificationController.getPendingVerificationForUser // Call the new controller
+);
+
 module.exports = router;

@@ -128,6 +128,7 @@ const planReferenceParamValidation = [
 // For validating :robloxId in URL parameters
 const robloxIdParamValidation = [
     param('robloxId').isInt({ gt: 0 }).withMessage('Roblox ID URL parameter must be a positive integer.')
+        .toInt() // Convert to integer
 ];
 
 // For validating the body when creating a flight plan

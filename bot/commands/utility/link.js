@@ -9,7 +9,7 @@ const Verification = require('../../../models/Verification'); // Adjust path
 const apiClient = new ApiClient(config.apiBaseUrl, config.apiKey);
 const ROBLOX_USER_API = 'https://users.roblox.com/v1/usernames/users';
 const VERIFICATION_EXPIRY_MINUTES = 5; // How long the code is valid
-const ROBLOX_GAME_LINK = process.env.ROBLOX_GAME_LINK || "YOUR_GAME_LINK_HERE"; // Add ROBLOX_GAME_LINK to .env!
+const ROBLOX_GAME_LINK = "https://www.roblox.com/games/80357326957810/Book-a-Qantas-Flight"; // Add ROBLOX_GAME_LINK to .env!
 
 // Helper to generate a random code
 function generateVerificationCode(length = 6) {
@@ -91,15 +91,14 @@ module.exports = {
             const verificationCode = generateVerificationCode();
             const expiresAt = new Date(Date.now() + VERIFICATION_EXPIRY_MINUTES * 60 * 1000);
 
-            // Remove any previous pending codes for this Discord user
             await Verification.deleteMany({ discordId: discordId, status: 'pending' });
 
-            // Create new verification record
             await Verification.create({
                 code: verificationCode,
                 discordId: discordId,
                 robloxId: robloxIdFound,
-                robloxUsername: robloxUsernameFound,
+                robloxUsername: robloxUsernameFound, // Username from Roblox API
+                discordUsername: discordUsernameForStorage, // <<-- STORE DISCORD USERNAME
                 status: 'pending',
                 expiresAt: expiresAt,
             });

@@ -135,3 +135,33 @@ exports.confirmVerification = async (req, res, next) => {
         // next(error);
     }
 };
+
+exports.getPendingVerificationForUser = async (req, res, next) => {
+    try {
+        const { robloxId } = req.params; // Already validated and parsed to Int
+
+        const pendingVerification = await Verification.findOne({
+            robloxId: robloxId,
+            status: 'pending',
+            expiresAt: { $gt: new Date() } // Check if not expired
+        }).select('discordUsername status').lean(); // Only select needed fields
+
+        if (pendingVerification) {
+            // Found a pending verification
+            res.status(200).json({
+                pending: true,
+                // Send the Discord username to display in the prompt
+                discordUsername: pendingVerification.discordUsername
+            });
+        } else {
+            // No pending verification found for this user
+            res.status(200).json({ // Respond 200 OK, just indicate no pending verification
+                pending: false
+            });
+        }
+    } catch (error) {
+        console.error(`Error fetching pending verification for Roblox ID ${req.params.robloxId}:`, error);
+        // Pass errors to the central handler, which will send a 500
+        next(error);
+    }
+};
