@@ -338,4 +338,5 @@ module.exports = {
     listFlightsValidation,
     updateFlightValidation,
     arrivalBodyValidation,
+    attendanceCheckValidation
 };

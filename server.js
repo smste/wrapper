@@ -20,9 +20,7 @@ const flightRoutes = require('./routes/flightRoutes');
 const flightPlanRoutes = require('./routes/flightPlanRoutes');
 const verificationRoutes = require('./routes/verificationRoutes');
 const webRoutes = require('./routes/webRoutes');
-
 const attendanceRoutes = require('./routes/attendanceRoutes');
-const gameServerAuth = require('./middleware/gameServerAuth');
 
 // Controllers needed by setup
 const verificationController = require('./controllers/verificationController');
