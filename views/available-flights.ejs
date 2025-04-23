@@ -1,0 +1,79 @@
+<%- include('partials/header', { pageTitle: pageTitle, currentUser: currentUser }) %>
+
+<h1 class="h2 mb-4 text-danger">Available Flights & Legs</h1>
+<p class="text-muted mb-4">
+    Browse the scheduled flight legs below. Use the associated details when creating a flight plan.
+    <% if (typeof formatDate !== 'function') { formatDate = (d) => new Date(d).toLocaleString(); } // Basic fallback %>
+</p>
+
+<div class="card shadow-sm border-light">
+    <div class="card-header bg-white fw-bold">
+        Flight Schedule
+    </div>
+    <% if (flights && flights.length > 0) { %>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Flight Ref</th>
+                        <th scope="col">Departure</th>
+                        <th scope="col">Arrival Leg</th>
+                        <th scope="col">Arrival Time (AEST/AEDT)</th>
+                        <th scope="col">Aircraft</th>
+                        <th scope="col">Leg Code</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% flights.forEach(flight => { %>
+                        <% if (flight.arrivals && flight.arrivals.length > 0) { %>
+                            <% flight.arrivals.forEach((arrival, index) => { %>
+                                <tr class="align-middle">
+                                    <% if (index === 0) { %>
+                                        <%# Only show flight ref and departure once per flight group %>
+                                        <td rowspan="<%= flight.arrivals.length %>" class="fw-medium border-end">
+                                            <code class="d-block mb-1"><%= flight.flight_reference %></code>
+                                            <small class="text-muted d-block">Event: <%= new Date(flight.eventDateTime).toLocaleDateString('en-AU') %></small>
+                                            <small class="text-muted d-block">Dispatcher: <%= flight.dispatcher %></small>
+                                        </td>
+                                        <td rowspan="<%= flight.arrivals.length %>" class="border-end">
+                                            <%= flight.departure.airport %><br>
+                                            (<%= flight.departure.iata %>) @ <%= flight.departure.time_format %>
+                                        </td>
+                                    <% } %>
+                                    <%# Arrival Leg Details %>
+                                    <td>
+                                        <%= arrival.airport %><br>
+                                        (<%= arrival.iata %>)
+                                    </td>
+                                    <td>
+                                        <%# Format the stored UTC date into a readable local format %>
+                                        <%= formatDate(arrival.scheduledArrivalTime, 'Australia/Sydney', 'dd/MM/yy HH:mm:ss zzz') %>
+                                    </td>
+                                    <td><%= arrival.aircraft %></td>
+                                    <td><code class="fw-bold"><%= arrival.flight_code %></code></td>
+                                </tr>
+                            <% }) %>
+                        <% } else { %>
+                             <%# Row for flight with no arrivals %>
+                             <tr>
+                                 <td class="fw-medium"><code class="d-block mb-1"><%= flight.flight_reference %></code></td>
+                                 <td><%= flight.departure.airport %><br>(<%= flight.departure.iata %>) @ <%= flight.departure.time_format %></td>
+                                 <td colspan="4" class="text-center text-muted fst-italic">No arrival legs defined for this flight.</td>
+                             </tr>
+                        <% } %>
+                    <% }) %>
+                </tbody>
+            </table>
+        </div>
+    <% } else { %>
+        <div class="card-body">
+            <p class="text-muted text-center my-3">No flights found in the system.</p>
+        </div>
+    <% } %>
+</div>
+
+<div class="mt-4">
+    <a href="/plan/create" class="btn btn-success">Go to Flight Plan Builder &rarr;</a>
+</div>
+
+<%- include('partials/footer', { script: null }) %>

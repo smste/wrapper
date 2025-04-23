@@ -1,6 +1,224 @@
 // controllers/flightController.js
 const Flight = require('../models/Flight');
-const User = require('../models/User'); // May need user info sometimes
+const User = require('../models/User'); // May need user info sometime
+const { DateTime } = require('luxon');
+
+// --- NEW Helper function using Luxon ---
+// Parses date/time strings assuming they are in Australia/Sydney timezone
+function parseDateTimeInput_Luxon(dateStr, timeStr) {
+    const timeZone = 'Australia/Sydney'; // Use IANA name for automatic DST handling
+    if (!dateStr || !timeStr) {
+        console.error("parseDateTimeInput_Luxon: dateStr or timeStr missing");
+        throw new Error('Date and Time strings are required.');
+    }
+    try {
+        // Ensure time has seconds for consistent parsing, default to :00
+        let time = timeStr;
+        if (time.match(/^\d{2}:\d{2}$/)) {
+             time += ':00';
+        } else if (!time.match(/^\d{2}:\d{2}:\d{2}$/)) {
+             throw new Error('Invalid time format HH:mm or HH:mm:ss required.');
+        }
+
+        // Combine date and time for Luxon format parsing
+        const dateTimeString = `${dateStr} ${time}`; // Luxon prefers space for this format usually
+        const formatString = 'yyyy-MM-dd HH:mm:ss'; // Format matching combined string
+
+        // Create Luxon DateTime object FROM the input string IN the specified zone
+        const localDt = DateTime.fromFormat(dateTimeString, formatString, { zone: timeZone });
+
+        if (!localDt.isValid) {
+            // Throw Luxon's explanation if available
+            throw new Error(localDt.invalidReason || `Could not parse '${dateTimeString}' in zone '${timeZone}'.`);
+        }
+
+        // Convert the Luxon DateTime object to a standard JavaScript Date object (which is UTC)
+        const utcDate = localDt.toJSDate();
+
+        console.log(`[DateTimeParse Luxon] Input: ${dateStr} ${timeStr} (Assumed ${timeZone}) -> Output UTC: ${utcDate.toISOString()}`);
+        return utcDate;
+
+    } catch (error) {
+        console.error(`Error parsing date/time with Luxon (Assumed ${timeZone}): ${dateStr}, ${timeStr}`, error);
+        // Rethrow a potentially more user-friendly error
+        throw new Error(`Invalid format or combination for date/time (expected YYYY-MM-DD HH:mm:ss assumed ${timeZone}): ${error.message}`);
+    }
+}
+// --- END Helper function ---
+
+
+// --- Update createFlight function to use the Luxon helper ---
+exports.createFlight = async (req, res, next) => {
+    try {
+        const { flight_reference } = req.params;
+        const { departure, dispatcher, event_date, event_time, arrivals } = req.body;
+
+        // Check existing (no change)
+        const existingFlight = await Flight.findOne({ flight_reference });
+        if (existingFlight) return res.status(409).json({ message: 'Flight reference already exists.' });
+
+        // --- Handle Event Date/Time using Luxon helper (defaults to Australia/Sydney) ---
+        let eventDateTimeUTC;
+        try {
+            eventDateTimeUTC = parseDateTimeInput_Luxon(event_date, event_time);
+            // The helper now throws on error, caught by outer try/catch or handled below
+        } catch (parseError) {
+            return res.status(400).json({ message: `Event time error: ${parseError.message}` });
+        }
+
+        // --- Handle Arrivals using Luxon helper ---
+        let processedArrivals = [];
+        if (arrivals && Array.isArray(arrivals)) {
+            for (const arrival of arrivals) {
+                 if (!arrival.scheduledArrivalDateString || !arrival.scheduledArrivalTimeString /* other req fields */) {
+                    return res.status(400).json({ message: `Arrival to ${arrival.iata || 'unknown'} is missing required fields (dateString, timeString, etc.).` });
+                 }
+                 let arrivalDateTimeUTC;
+                 try {
+                     // Use the Luxon helper, assumes AEST/AEDT input
+                     arrivalDateTimeUTC = parseDateTimeInput_Luxon(
+                         arrival.scheduledArrivalDateString,
+                         arrival.scheduledArrivalTimeString
+                     );
+                     // Add processed arrival (using correct field names from Schema)
+                      processedArrivals.push({
+                           airport: arrival.airport,
+                           iata: arrival.iata.toUpperCase(),
+                           scheduledArrivalTime: arrivalDateTimeUTC, // Store Date object
+                           flight_code: arrival.flight_code,
+                           aircraft: arrival.aircraft,
+                           upgrade_availability_business: arrival.upgrade_availability_business,
+                           upgrade_availability_first: arrival.upgrade_availability_first,
+                           upgrade_availability_chairmans: arrival.upgrade_availability_chairmans,
+                           players: [],
+                      });
+                 } catch (arrivalParseError) {
+                     return res.status(400).json({ message: `Invalid date/time for arrival ${arrival.iata || 'unknown'}: ${arrivalParseError.message}` });
+                 }
+            }
+        } // End if arrivals
+
+        // --- Create the new flight document (Schema expects eventDateTime: Date) ---
+        const newFlight = new Flight({
+            flight_reference,
+            departure: {
+                airport: departure.airport,
+                iata: departure.iata.toUpperCase(),
+                time_format: departure.time_format,
+            },
+            dispatcher,
+            eventDateTime: eventDateTimeUTC, // Save the UTC Date object
+            arrivals: processedArrivals,
+            // players: [] // Default in schema
+        });
+
+        const savedFlight = await newFlight.save();
+        console.log(`[API POST /flights] Successfully created flight ${savedFlight.flight_reference}`);
+        res.status(201).json({ message: 'Flight created successfully.', flight: savedFlight });
+
+    } catch (error) {
+        // ... error handling (duplicate key, validation) as before ...
+        if (error.code === 11000) return res.status(409).json({ message: `Flight reference '${req.params.flight_reference}' already exists.` });
+        if (error.name === 'ValidationError') return res.status(400).json({ message: 'Validation Error creating flight', errors: error.errors });
+        console.error(`[API POST /flights] Unexpected error for flight ref '${req.params.flight_reference}':`, error);
+        next(error);
+    }
+};
+
+// --- Update createArrival and updateArrival similarly ---
+// Ensure they call parseDateTimeInput_Luxon(dateString, timeString)
+// and save the result to the scheduledArrivalTime field (which is type Date).
+
+exports.createArrival = async (req, res, next) => {
+    try {
+        const { flight_reference } = req.params;
+        const { airport, iata, scheduledArrivalDateString, scheduledArrivalTimeString, flight_code, aircraft, ...upgrades } = req.body;
+
+        const flight = await Flight.findOne({ flight_reference });
+        if (!flight) return res.status(404).json({ message: `Flight '${flight_reference}' not found.`});
+        // ... check duplicate IATA ...
+
+        let scheduledArrivalTimeUTC;
+        try {
+             scheduledArrivalTimeUTC = parseDateTimeInput_Luxon(scheduledArrivalDateString, scheduledArrivalTimeString);
+        } catch(parseError) {
+             return res.status(400).json({ message: `Arrival time error: ${parseError.message}` });
+        }
+
+
+        const newArrivalData = {
+            airport, iata: iata.toUpperCase(),
+            scheduledArrivalTime: scheduledArrivalTimeUTC, // Store Date object
+            flight_code, aircraft,
+            upgrade_availability_business: upgrades.upgrade_availability_business,
+            upgrade_availability_first: upgrades.upgrade_availability_first,
+            upgrade_availability_chairmans: upgrades.upgrade_availability_chairmans,
+            players: []
+        };
+
+        flight.arrivals.push(newArrivalData);
+        const updatedFlight = await flight.save();
+        const newArrival = updatedFlight.arrivals.find(arr => arr.iata === iata.toUpperCase()); // Simplistic
+        res.status(201).json({ message: 'Arrival created and added to flight.', arrival: newArrival || newArrivalData });
+
+    } catch (error) { /* ... error handling ... */ next(error); }
+};
+
+
+exports.updateArrival = async (req, res, next) => {
+     try {
+        const { flight_reference, arrivalIata } = req.params;
+        const updateFields = req.body;
+
+        const flight = await Flight.findOne({ flight_reference });
+        if (!flight) return res.status(404).json({ message: `Flight '${flight_reference}' not found.`});
+        const arrivalIndex = findArrivalIndexByIata(flight, arrivalIata); // findArrivalIndexByIata helper assumed to exist
+
+        const setUpdate = {};
+        const arrivalPathPrefix = `arrivals.${arrivalIndex}.`;
+
+        // Process non-time fields
+        if (updateFields.airport !== undefined) setUpdate[arrivalPathPrefix + 'airport'] = updateFields.airport;
+        if (updateFields.flight_code !== undefined) setUpdate[arrivalPathPrefix + 'flight_code'] = updateFields.flight_code;
+        if (updateFields.aircraft !== undefined) setUpdate[arrivalPathPrefix + 'aircraft'] = updateFields.aircraft;
+        // ... other non-time fields ...
+        if (updateFields.upgrade_availability_chairmans !== undefined) setUpdate[arrivalPathPrefix + 'upgrade_availability_chairmans'] = updateFields.upgrade_availability_chairmans;
+
+
+        // Handle date/time update (assuming AEST)
+        // Validation should ensure both date and time strings are present if updating time
+        if (updateFields.scheduledArrivalDateString && updateFields.scheduledArrivalTimeString) {
+            try {
+                 const scheduledArrivalTimeUTC = parseDateTimeInput_Luxon(
+                     updateFields.scheduledArrivalDateString,
+                     updateFields.scheduledArrivalTimeString
+                 );
+                 setUpdate[arrivalPathPrefix + 'scheduledArrivalTime'] = scheduledArrivalTimeUTC; // Set the Date object
+             } catch(parseError) {
+                   return res.status(400).json({ message: `Invalid date/time update: ${parseError.message}` });
+             }
+        } else if (updateFields.scheduledArrivalDateString || updateFields.scheduledArrivalTimeString) {
+             // Should be caught by validation if configured correctly
+             return res.status(400).json({ message: 'To update arrival time, please provide both date and time strings.' });
+        }
+
+        if (Object.keys(setUpdate).length === 0) {
+             return res.status(400).json({ message: 'No valid fields provided for arrival update.' });
+        }
+
+        // --- Perform Update ---
+         const updatedFlight = await Flight.findOneAndUpdate(
+             { _id: flight._id, 'arrivals.iata': arrivalIata.toUpperCase() },
+             { $set: setUpdate },
+             { new: true, runValidators: true }
+         );
+
+         if (!updatedFlight) throw new Error('Failed to apply update to arrival segment.');
+         const updatedArrival = updatedFlight.arrivals.find(arr => arr.iata === arrivalIata.toUpperCase());
+         res.status(200).json({ message: `Arrival segment ${arrivalIata} updated successfully.`, arrival: updatedArrival });
+
+     } catch (error) { /* ... error handling, including 404 from findArrivalIndexByIata ... */ next(error); }
+};
 
 // Helper to handle 'not found' errors
 const checkFlightNotFound = (doc, ref) => {
@@ -75,106 +293,6 @@ exports.getFlightByReference = async (req, res, next) => {
         next(error);
     }
 };
-
-
-// POST /flights/:flight_reference
-exports.createFlight = async (req, res, next) => {
-    try {
-        const { flight_reference } = req.params;
-        // Destructure required fields AND the now optional 'arrivals' field
-        const { departure, dispatcher, date_of_event, arrivals } = req.body;
-
-        const existingFlight = await Flight.findOne({ flight_reference: flight_reference });
-        if (existingFlight) {
-            return res.status(409).json({ message: 'Flight reference already exists.' });
-        }
-
-        // Prepare flight data for creation
-        const flightData = {
-            flight_reference,
-            departure: { // Ensure nested structure matches schema
-                airport: departure.airport,
-                iata: departure.iata,
-                time_format: departure.time_format,
-            },
-            dispatcher,
-            date_of_event: {
-                date: date_of_event.date, // Assuming validated as ISO date string
-                time: date_of_event.time,
-            },
-            // --- MODIFIED ---
-            // Use the 'arrivals' from the request body if it's a valid array, otherwise default to empty
-            arrivals: (arrivals && Array.isArray(arrivals)) ? arrivals : [],
-            players: [] // Players are still added separately later
-        };
-
-        const newFlight = new Flight(flightData);
-        const savedFlight = await newFlight.save();
-
-        res.status(201).json({ message: 'Flight created successfully.', flight: savedFlight });
-    } catch (error) {
-         if (error.code === 11000) { // Handle potential race condition for unique index
-            return res.status(409).json({ message: 'Flight reference already exists (concurrent creation).' });
-        }
-        next(error); // Pass other errors to the handler
-    }
-};
-
-// POST /flights/:flight_reference/arrivals
-exports.createArrival = async (req, res, next) => {
-    try {
-        const { flight_reference } = req.params;
-        // Get date/time parts from body
-        const { airport, iata, scheduledArrivalDate, scheduledArrivalTimeStr, scheduledArrivalTimezone, flight_code, aircraft, upgrade_availability_business, upgrade_availability_first, upgrade_availability_chairmans } = req.body;
-
-        // Find the flight (non-lean to save)
-        const flight = await Flight.findOne({ flight_reference: flight_reference });
-        checkFlightNotFound(flight, flight_reference);
-
-        // Convert input date/time/zone to UTC Date object
-        const scheduledArrivalTimeUTC = parseDateTimeInput(scheduledArrivalDate, scheduledArrivalTimeStr, scheduledArrivalTimezone);
-        if (!scheduledArrivalTimeUTC) {
-             // Should be caught by validation, but safety check
-             return res.status(400).json({ message: 'Valid scheduledArrivalDate, scheduledArrivalTimeStr, and scheduledArrivalTimezone are required.'});
-        }
-
-
-        // Check if arrival with the same IATA already exists (optional)
-        if (flight.arrivals.some(arr => arr.iata === iata.toUpperCase())) {
-             return res.status(409).json({ message: `Arrival with IATA ${iata.toUpperCase()} already exists for this flight.` });
-        }
-
-        // Create the new arrival subdocument data
-        const newArrivalData = {
-            airport,
-            iata: iata.toUpperCase(),
-            scheduledArrivalTime: scheduledArrivalTimeUTC, // Store the UTC Date object
-            flight_code,
-            aircraft,
-            upgrade_availability_business,
-            upgrade_availability_first,
-            upgrade_availability_chairmans,
-            players: [] // Initialize empty players array
-        };
-
-        flight.arrivals.push(newArrivalData);
-        const updatedFlight = await flight.save();
-
-        // Find the newly added arrival to return it specifically
-        // Mongoose might add an _id, find using that if possible, otherwise by IATA
-        const newArrival = updatedFlight.arrivals.find(arr => arr.iata === iata.toUpperCase()); // Simplistic find
-
-        res.status(201).json({ message: 'Arrival created and added to flight.', arrival: newArrival || newArrivalData });
-    } catch (error) {
-         if (error.name === 'ValidationError') {
-             return res.status(400).json({ message: 'Validation Error', errors: error.errors });
-         }
-        next(error);
-    }
-};
-
-// controllers/flightController.js
-// ... other requires (Flight, User) ...
 
 /**
  * POST /flights/:flight_reference/arrivals/:arrivalIata/players/:robloxId
@@ -316,42 +434,84 @@ exports.updatePlayerPreferencesOnArrivalLeg = async (req, res, next) => {
     }
 };
 
+/**
+ * GET /flights
+ * List flights, formatted as individual plannable legs.
+ * TODO: Add proper filtering and pagination for production.
+ */
 exports.listFlights = async (req, res, next) => {
+    console.log(`[API GET /flights] Request received. Query params:`, req.query);
     try {
-       const { page = 1, limit = 20, /* other filters like status, date_after etc. */ } = req.query;
+       // ... (DB connection check) ...
+       console.log(`[API GET /flights] Executing Flight.find({})`);
+       const flights = await Flight.find({}).lean();
+       console.log(`[API GET /flights] Found ${flights?.length || 0} raw flight documents.`);
 
-       const filter = {};
-       // Add filter conditions here based on query params if needed
-       // e.g., if (req.query.status) filter.status = req.query.status;
+       const availableLegs = [];
+       if (flights) {
+           flights.forEach(flight => {
+               if (!flight.departure) { // Check parent departure object first
+                    console.warn(`[API GET /flights] Skipping flight ${flight.flight_reference} - Missing departure object.`);
+                    return; // Skip this flight entirely if no departure info
+               }
+               if (flight.arrivals && flight.arrivals.length > 0) {
+                   flight.arrivals.forEach((arrival, index) => {
+                       // Check each required field explicitly
+                       const hasDep = !!flight.departure; // Should be true based on check above
+                       const hasArrIata = !!arrival.iata;
+                       const hasFlightCode = !!arrival.flight_code;
+                       const hasSchedArrTime = !!arrival.scheduledArrivalTime;
 
-       const options = {
-           page: parseInt(page, 10),
-           limit: parseInt(limit, 10),
-           sort: { createdAt: -1 }, // Example sort
-           lean: true, // Use lean for read performance
-           // Use mongoose-paginate-v2 if installed for easier pagination
-       };
+                       if (hasDep && hasArrIata && hasFlightCode && hasSchedArrTime) {
+                           // All good, add the leg
+                           availableLegs.push({
+                               flightReference: flight.flight_reference,
+                               segmentFlightCode: arrival.flight_code,
+                               departureAirport: flight.departure.airport,
+                               departureIata: flight.departure.iata,
+                               departureTimeFormat: flight.departure.time_format,
+                               arrivalAirport: arrival.airport,
+                               arrivalIata: arrival.iata,
+                               scheduledArrivalTimeISO: arrival.scheduledArrivalTime.toISOString(),
+                               aircraft: arrival.aircraft,
+                           });
+                       } else {
+                           // --- DETAILED LOG FOR SKIPPED LEG ---
+                           console.warn(`[API GET /flights] Skipping arrival leg #${index} for flight ${flight.flight_reference} - Missing data:`, {
+                               flightRef: flight.flight_reference,
+                               arrivalIataInDB: arrival.iata, // Show what was found
+                               arrivalFlightCodeInDB: arrival.flight_code, // Show what was found
+                               arrivalSchedTimeInDB: arrival.scheduledArrivalTime, // Show what was found
+                               iataOK: hasArrIata,
+                               flightCodeOK: hasFlightCode,
+                               schedTimeOK: hasSchedArrTime
+                           });
+                           // --- END DETAILED LOG ---
+                       }
+                   });
+               } else {
+                    console.warn(`[API GET /flights] Skipping flight ${flight.flight_reference} - No arrivals array found or empty.`);
+               }
+           });
+       }
+        console.log(`[API GET /flights] Processed into ${availableLegs.length} available legs.`);
+       // ... rest of function (pagination, response) ...
+        const page = parseInt(req.query.page || '1', 10);
+        const limit = parseInt(req.query.limit || '50', 10);
+        const totalLegs = availableLegs.length;
+        const startIndex = (page - 1) * limit;
+        const endIndex = page * limit;
+        const paginatedLegs = availableLegs.slice(startIndex, endIndex);
+        const responsePayload = { legs: paginatedLegs, page, limit, totalPages: Math.ceil(totalLegs / limit), totalItems: totalLegs };
+        console.log(`[API GET /flights] Sending response with ${responsePayload.legs?.length || 0} legs for page ${page}.`);
+        res.status(200).json(responsePayload);
 
-       // Basic pagination without extra library
-       const skip = (options.page - 1) * options.limit;
-       const flights = await Flight.find(filter)
-                                   .sort(options.sort)
-                                   .skip(skip)
-                                   .limit(options.limit)
-                                   .lean();
-       const totalFlights = await Flight.countDocuments(filter);
-
-       res.status(200).json({
-           flights: flights,
-           page: options.page,
-           limit: options.limit,
-           totalPages: Math.ceil(totalFlights / options.limit),
-           totalFlights: totalFlights,
-       });
     } catch (error) {
+       console.error("[API GET /flights] Error in listFlights controller:", error);
        next(error);
     }
 };
+
 
 /**
 * PATCH /flights/:flight_reference
@@ -412,98 +572,6 @@ exports.deleteFlight = async (req, res, next) => {
        next(error);
    }
 };
-
-
-/**
-* PATCH /flights/:flight_reference/arrivals/:arrivalIata
-* Modify details of a specific arrival segment. Handles timezone input.
-*/
-exports.updateArrival = async (req, res, next) => {
-    try {
-       const { flight_reference, arrivalIata } = req.params;
-       const updateFields = req.body; // Get all potential fields
-
-       // Find flight (non-lean)
-       const flight = await Flight.findOne({ flight_reference: flight_reference });
-       checkFlightNotFound(flight, flight_reference);
-
-       // Find index of the arrival to update
-       const arrivalIndex = findArrivalIndexByIata(flight, arrivalIata); // Throws 404 if not found
-
-       // --- Prepare $set update object for the specific arrival ---
-       const setUpdate = {};
-       let arrivalPathPrefix = `arrivals.${arrivalIndex}.`; // Path prefix for $set
-
-       // Process each potential field
-       if (updateFields.airport !== undefined) setUpdate[arrivalPathPrefix + 'airport'] = updateFields.airport;
-       if (updateFields.flight_code !== undefined) setUpdate[arrivalPathPrefix + 'flight_code'] = updateFields.flight_code;
-       if (updateFields.aircraft !== undefined) setUpdate[arrivalPathPrefix + 'aircraft'] = updateFields.aircraft;
-       if (updateFields.upgrade_availability_business !== undefined) setUpdate[arrivalPathPrefix + 'upgrade_availability_business'] = updateFields.upgrade_availability_business;
-       if (updateFields.upgrade_availability_first !== undefined) setUpdate[arrivalPathPrefix + 'upgrade_availability_first'] = updateFields.upgrade_availability_first;
-       if (updateFields.upgrade_availability_chairmans !== undefined) setUpdate[arrivalPathPrefix + 'upgrade_availability_chairmans'] = updateFields.upgrade_availability_chairmans;
-
-       // Handle date/time/timezone update
-       if (updateFields.scheduledArrivalDate || updateFields.scheduledArrivalTimeStr || updateFields.scheduledArrivalTimezone) {
-            // If any part of the time is being updated, we need all parts to reconstruct the date
-            const currentDate = flight.arrivals[arrivalIndex].scheduledArrivalTime;
-            // Get current parts in AEST/SYDNEY as a default for filling missing pieces? Or require all 3?
-            // Let's require all 3 for simplicity when updating time. Validation should enforce this? No, PATCH allows partial.
-            // We need to get the *existing* parts if some are missing from the request body to recalculate.
-
-            // Extract existing date/time/zone - This requires careful timezone handling!
-            // For simplicity here, let's assume the API *requires* all three parts (date, time, zone) if updating time.
-            // The validation `arrivalBodyValidation` needs adjustment for PATCH to require all 3 if any time part is present.
-            // OR fetch existing, format it, replace parts, then re-parse. Complex.
-
-            // ---> Simplified Approach: Assume validation requires Date, Time, Zone if ANY are present for PATCH <---
-            if (updateFields.scheduledArrivalDate && updateFields.scheduledArrivalTimeStr && updateFields.scheduledArrivalTimezone) {
-                const scheduledArrivalTimeUTC = parseDateTimeInput(
-                    updateFields.scheduledArrivalDate,
-                    updateFields.scheduledArrivalTimeStr,
-                    updateFields.scheduledArrivalTimezone
-                );
-                 if (!scheduledArrivalTimeUTC) throw new Error('Invalid date/time/timezone combination provided for update.'); // Caught by try/catch
-                 setUpdate[arrivalPathPrefix + 'scheduledArrivalTime'] = scheduledArrivalTimeUTC;
-            } else if (updateFields.scheduledArrivalDate || updateFields.scheduledArrivalTimeStr || updateFields.scheduledArrivalTimezone) {
-                 // If only some parts are provided, return an error (or implement complex merge logic)
-                return res.status(400).json({ message: 'To update arrival time, please provide all three fields: scheduledArrivalDate (YYYY-MM-DD), scheduledArrivalTimeStr (HH:mm:ss), and scheduledArrivalTimezone (e.g., Australia/Sydney or +10:00).' });
-            }
-       }
-
-
-       if (Object.keys(setUpdate).length === 0) {
-            return res.status(400).json({ message: 'No valid fields provided for arrival update.' });
-       }
-
-       // --- Perform Update using findOneAndUpdate to target the specific arrival ---
-        const updatedFlight = await Flight.findOneAndUpdate(
-            { _id: flight._id, 'arrivals.iata': arrivalIata.toUpperCase() }, // Find flight and specific arrival
-            { $set: setUpdate }, // Apply the updates using dot notation path
-            { new: true, runValidators: true } // Return updated doc, run schema validators
-        );
-
-        if (!updatedFlight) {
-             // Should not happen if flight/arrival existed, but handle defensively
-              throw new Error('Failed to apply update to arrival segment.');
-        }
-
-       // Find the updated arrival segment to return
-        const updatedArrival = updatedFlight.arrivals.find(arr => arr.iata === arrivalIata.toUpperCase());
-
-       res.status(200).json({ message: `Arrival segment ${arrivalIata} updated successfully.`, arrival: updatedArrival });
-
-    } catch (error) {
-       if (error.name === 'ValidationError') {
-            return res.status(400).json({ message: 'Validation Error', errors: error.errors });
-       }
-       // Handle 404 errors from findArrivalIndexByIata
-        if (error.statusCode === 404) {
-             return res.status(404).json({ message: error.message });
-        }
-       next(error);
-    }
-};
-
 
 /**
 * DELETE /flights/:flight_reference/arrivals/:arrivalIata

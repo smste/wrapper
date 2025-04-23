@@ -1,0 +1,34 @@
+<%- include('partials/header', { pageTitle: pageTitle, currentUser: null }) %> <% /* No logged in user yet */ %>
+
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5 text-center">
+         <div class="card shadow-sm border-light">
+             <div class="card-body p-4 p-md-5">
+                 <h1 class="h3 mb-4 fw-bold text-danger">Check Your Discord DMs</h1>
+
+                 <div id="spinner" class="spinner-border text-danger mb-3" role="status">
+                     <span class="visually-hidden">Loading...</span>
+                 </div>
+
+                 <p id="status-message" class="text-muted mb-4">
+                     A login approval request has been sent to your linked Discord account. Please check your DMs and click **Approve**.<br>
+                      (Waiting for approval... Request expires in approx <%= expiryMinutes %> minutes)
+                 </p>
+
+                 <p class="text-muted small">If you don't receive a DM, ensure the bot isn't blocked and can send you messages.</p>
+                 <hr class="my-4">
+                 <a href="/login" class="btn btn-outline-secondary btn-sm">Cancel / Try Again</a>
+                 <p class="text-black-50 mt-3 small" style="font-size: 0.7rem; word-wrap: break-word;">
+                     <span class="visually-hidden">Request ID:</span> <%= loginRequestId %>
+                 </p>
+             </div>
+         </div>
+    </div>
+</div>
+
+
+<script id="loginData" type="application/json">
+    <%- JSON.stringify({ loginRequestId: loginRequestId }) %>
+</script>
+
+<%- include('partials/footer', { script: 'login-wait' }) %>

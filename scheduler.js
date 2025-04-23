@@ -17,6 +17,31 @@ const NOTIFICATION_KEYS = Object.keys(NOTIFICATION_WINDOWS); // ['1d', '5h', '30
 
 let discordClient = null; // Discord client instance will be passed in
 
+async function checkAttendanceTimeouts() {
+    const timeoutThreshold = new Date(Date.now() - HEARTBEAT_TIMEOUT_MINUTES * 60 * 1000);
+    console.log(`[Scheduler] Checking for attendance records not seen since ${timeoutThreshold.toISOString()}`);
+
+    try {
+        const result = await AttendanceRecord.updateMany(
+            {
+                status: 'active',
+                lastSeen: { $lt: timeoutThreshold } // Find active records last seen before the threshold
+            },
+            {
+                $set: { status: 'abandoned' } // Or 'incomplete'
+            }
+        );
+
+        if (result.modifiedCount > 0) {
+            console.log(`[Scheduler] Marked ${result.modifiedCount} attendance records as abandoned due to timeout.`);
+        } else {
+            // console.log(`[Scheduler] No attendance records timed out.`); // Can be noisy
+        }
+    } catch (error) {
+        console.error("[Scheduler] Error checking attendance timeouts:", error);
+    }
+}
+
 // --- Helper Function to Send DM ---
 async function sendDm(discordId, message) {
     if (!discordClient) {
@@ -174,7 +199,8 @@ function startScheduler(client) {
 
     // Schedule the job to run
     schedule.scheduleJob(`*/${CHECK_INTERVAL_MINUTES} * * * *`, checkAndSendNotifications); // Cron syntax for every X minutes
-
+    console.log(`[Scheduler] Starting attendance timeout check job (runs every ${CHECK_TIMEOUT_INTERVAL_MINUTES} minutes)...`);
+    schedule.scheduleJob(`*/${CHECK_TIMEOUT_INTERVAL_MINUTES} * * * *`, checkAttendanceTimeouts);
     // Optional: Run once immediately on startup?
     // checkAndSendNotifications();
 }

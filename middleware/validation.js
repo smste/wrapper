@@ -37,52 +37,18 @@ const flightRefValidation = [
     param('flight_reference').isString().notEmpty().trim().withMessage('Flight reference is required.')
 ];
 
-// Update createFlightValidation
-const createFlightValidation = [
-    param('flight_reference').isString().notEmpty().trim().withMessage('Flight reference is required.'),
-
-    // Departure validation (no change)
-    body('departure').isObject().withMessage('Departure object is required.'),
-    body('departure.airport').isString().notEmpty().withMessage('Departure airport name is required.'),
-    body('departure.iata').isString().isLength({ min: 3, max: 3 }).toUpperCase().withMessage('Departure IATA must be 3 letters.'),
-    body('departure.time_format').matches(/^([01]\d|2[0-3]):([0-5]\d)$/).withMessage('Departure time must be in HH:MM format.'),
-
-    // Dispatcher validation (no change)
-    body('dispatcher').isString().notEmpty().withMessage('Dispatcher is required.'),
-
-    // Date validation (no change)
-    body('date_of_event').isObject().withMessage('Date object is required.'),
-    body('date_of_event.date').isISO8601().toDate().withMessage('Event date must be a valid ISO 8601 date string (YYYY-MM-DD).'),
-    body('date_of_event.time').matches(/^([01]\d|2[0-3]):([0-5]\d)$/).withMessage('Event time must be in HH:MM format.'),
-
-    // --- MODIFIED SECTION: Optional Arrivals Validation ---
-    body('arrivals')
-        .optional({ checkFalsy: true }) // Makes the entire 'arrivals' key optional
-        .isArray({ min: 1}) // If present, must be an array with at least one item
-        .withMessage('Arrivals must be a non-empty array if provided.'),
-
-    // Apply validation rules to each object within the 'arrivals' array using '*'
-    // These fields become required *if* the arrivals array is present and not empty
-    body('arrivals.*.airport').if(body('arrivals').exists({checkFalsy: true})) // Only validate if arrivals exist
-        .isString().notEmpty().withMessage('Arrival airport name is required.'),
-    body('arrivals.*.iata').if(body('arrivals').exists({checkFalsy: true}))
-        .isString().isLength({ min: 3, max: 3 }).toUpperCase().withMessage('Arrival IATA must be 3 letters.'),
-    body('arrivals.*.scheduledArrivalTime').if(body('arrivals').exists({checkFalsy: true}))
-        .isISO8601().withMessage('Each arrival scheduledArrivalTime must be a valid ISO 8601 date-time string.')
-        .toDate() // Convert valid strings to Date objects
-        .withMessage('Invalid date format for scheduledArrivalTime in arrivals array.'),
-    body('arrivals.*.flight_code').if(body('arrivals').exists({checkFalsy: true}))
-        .isString().notEmpty().withMessage('Arrival flight code is required.'),
-    body('arrivals.*.aircraft').if(body('arrivals').exists({checkFalsy: true}))
-        .isString().notEmpty().withMessage('Arrival aircraft is required.'),
-    body('arrivals.*.upgrade_availability_business').if(body('arrivals').exists({checkFalsy: true}))
-        .isBoolean().withMessage('Business upgrade availability must be a boolean.'),
-    body('arrivals.*.upgrade_availability_first').if(body('arrivals').exists({checkFalsy: true}))
-        .isBoolean().withMessage('First class upgrade availability must be a boolean.'),
-    body('arrivals.*.upgrade_availability_chairmans').if(body('arrivals').exists({checkFalsy: true}))
-        .isBoolean().withMessage('Chairman upgrade availability must be a boolean.'),
-];
-
+// --- Timezone Validation Helper (Ensure this exists) ---
+const timezoneValidation = (field) => body(field).custom((value) => {
+    if (!value) return true; // Allow optional fields to pass if not present
+    try {
+        if (getTimeZone(value) || ['Z', '+00:00', '-00:00'].includes(value) || /^[+-]([01]\d|2[0-3]):([0-5]\d)$/.test(value)) {
+             return true;
+        }
+        throw new Error(`Invalid timezone format.`);
+    } catch (e) {
+         throw new Error(`Invalid timezone: ${e.message}`);
+    }
+}).withMessage('Invalid timezone. Use IANA name (e.g., Australia/Sydney) or offset (+HH:mm / -HH:mm / Z).');
 
 const createArrivalValidation = [
      ...flightRefValidation,
@@ -224,20 +190,6 @@ const dateValidation = (field) => body(field).matches(/^\d{4}-\d{2}-\d{2}$/).wit
 // Basic check for HH:mm or HH:mm:ss format
 const timeValidation = (field) => body(field).matches(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/).withMessage(`${field} must be in HH:mm or HH:mm:ss format.`);
 // Validate Timezone string (IANA name or offset)
-const timezoneValidation = (field) => body(field).custom((value) => {
-    try {
-        // Check if it's a valid IANA zone like 'Australia/Sydney'
-        // or handle UTC offsets like '+10:00', '-05:00', 'Z'
-        if (getTimeZone(value) || ['Z', '+00:00', '-00:00'].includes(value) || /^[+-]([01]\d|2[0-3]):([0-5]\d)$/.test(value)) {
-             return true;
-        }
-        // List available zones on error? Maybe too verbose.
-        // const availableZones = listTimeZones();
-        throw new Error(`Invalid timezone. Use IANA name (e.g., Australia/Sydney) or offset (+HH:mm / -HH:mm / Z).`);
-    } catch (e) {
-         throw new Error(`Invalid timezone format: ${e.message}`);
-    }
-}).withMessage('Invalid timezone provided.');
 
 // Validation for updating a Flight (example: dispatcher)
 const updateFlightValidation = [
@@ -251,30 +203,106 @@ const updateFlightValidation = [
      }),
 ];
 
-// Validation for adding/updating an Arrival (includes time parts)
+// --- Update createFlightValidation ---
+const createFlightValidation = [
+    // Validate URL Parameter
+    param('flight_reference').isString().notEmpty().trim().withMessage('Flight reference URL parameter is required.'),
+
+    // Validate Departure Object
+    body('departure').isObject().withMessage('Departure object is required.'),
+    body('departure.airport').isString().notEmpty().withMessage('Departure airport name is required.'),
+    body('departure.iata').isString().isLength({ min: 3, max: 3 }).matches(/^[A-Za-z]{3}$/).toUpperCase().withMessage('Departure IATA must be 3 letters.'),
+    body('departure.time_format').matches(/^([01]\d|2[0-3]):([0-5]\d)$/).withMessage('Departure time must be in HH:mm format (24-hour).'),
+
+    // Validate Dispatcher
+    body('dispatcher').isString().notEmpty().withMessage('Dispatcher is required.'),
+
+    // Validate date_of_event Object (as per reverted schema)
+    body('date_of_event').isObject().withMessage('date_of_event object is required.'),
+    body('date_of_event.date')
+        .exists({ checkFalsy: true }).withMessage('date_of_event.date (YYYY-MM-DD) is required.')
+        .matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('date_of_event.date must be in YYYY-MM-DD format.'),
+    body('date_of_event.time')
+        .exists({ checkFalsy: true }).withMessage('date_of_event.time (HH:mm or HH:mm:ss) is required.')
+        .matches(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/).withMessage('date_of_event.time must be in HH:mm or HH:mm:ss format.'),
+
+    // Validate Optional Arrivals Array
+    body('arrivals')
+        .optional({ checkFalsy: true })
+        .isArray({ min: 1}) // Allow empty array now? Or keep min 1 if always providing? Let's allow empty for flexibility.
+        // .isArray({ min: 1}) // Use this if you *require* at least one arrival when the 'arrivals' key is present.
+        .withMessage('Arrivals must be an array if provided.'),
+
+    // Validate fields within each object in the 'arrivals' array *if* arrivals exists
+    // Using the field names ENDING IN 'String'
+    body('arrivals.*.airport').if(body('arrivals').exists({checkFalsy: true}))
+        .isString().notEmpty().withMessage('Each arrival requires an airport name.'),
+    body('arrivals.*.iata').if(body('arrivals').exists({checkFalsy: true}))
+        .isString().isLength({ min: 3, max: 3 }).matches(/^[A-Za-z]{3}$/).toUpperCase().withMessage('Each arrival IATA must be 3 letters.'),
+    body('arrivals.*.scheduledArrivalDateString').if(body('arrivals').exists({checkFalsy: true})) // <<-- Check for ...String
+        .exists({ checkFalsy: true }).withMessage('Each arrival requires scheduledArrivalDateString (YYYY-MM-DD).')
+        .matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('Arrival scheduledArrivalDateString must be YYYY-MM-DD.'),
+    body('arrivals.*.scheduledArrivalTimeString').if(body('arrivals').exists({checkFalsy: true})) // <<-- Check for ...String
+         .exists({ checkFalsy: true }).withMessage('Each arrival requires scheduledArrivalTimeString (HH:mm or HH:mm:ss).')
+        .matches(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/).withMessage('Arrival scheduledArrivalTimeString must be HH:mm or HH:mm:ss.'),
+    // Other required arrival fields
+    body('arrivals.*.flight_code').if(body('arrivals').exists({checkFalsy: true}))
+        .isString().notEmpty().withMessage('Each arrival requires a flight_code.'),
+    body('arrivals.*.aircraft').if(body('arrivals').exists({checkFalsy: true}))
+        .isString().notEmpty().withMessage('Each arrival requires an aircraft type.'),
+    body('arrivals.*.upgrade_availability_business').if(body('arrivals').exists({checkFalsy: true}))
+        .isBoolean().withMessage('Each arrival requires upgrade_availability_business (true/false).'),
+    body('arrivals.*.upgrade_availability_first').if(body('arrivals').exists({checkFalsy: true}))
+        .isBoolean().withMessage('Each arrival requires upgrade_availability_first (true/false).'),
+    body('arrivals.*.upgrade_availability_chairmans').if(body('arrivals').exists({checkFalsy: true}))
+        .isBoolean().withMessage('Each arrival requires upgrade_availability_chairmans (true/false).')
+];
+
+const attendanceCheckValidation = [
+    body('planReference').isString().notEmpty().trim().withMessage('planReference is required.'),
+    body('robloxId').isInt({ gt: 0 }).toInt().withMessage('Roblox ID must be a positive integer.'),
+    body('segmentFlightCode').isString().notEmpty().trim().withMessage('segmentFlightCode is required.'),
+];
+
+// --- Update arrivalBodyValidation similarly ---
 const arrivalBodyValidation = [
-    body('airport').optional().isString().notEmpty().withMessage('Arrival airport name is required.'), // Optional for PATCH
-    body('scheduledArrivalDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('scheduledArrivalDate must be YYYY-MM-DD.'), // Optional for PATCH
-    body('scheduledArrivalTimeStr').optional().matches(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/).withMessage('scheduledArrivalTimeStr must be HH:mm or HH:mm:ss.'), // Optional for PATCH
-    body('scheduledArrivalTimezone').optional().custom(timezoneValidation().custom).withMessage('scheduledArrivalTimezone is invalid.'), // Optional for PATCH
-    body('flight_code').optional().isString().notEmpty().withMessage('Arrival flight code is required.'), // Optional for PATCH
-    body('aircraft').optional().isString().notEmpty().withMessage('Arrival aircraft is required.'), // Optional for PATCH
+    // Keep rules for airport, flight_code, aircraft, upgrades (make optional for PATCH)
+    body('airport').optional().isString().notEmpty().withMessage('Arrival airport name must be non-empty if provided.'),
+    body('flight_code').optional().isString().notEmpty().withMessage('Arrival flight code must be non-empty if provided.'),
+    body('aircraft').optional().isString().notEmpty().withMessage('Arrival aircraft must be non-empty if provided.'),
     body('upgrade_availability_business').optional().isBoolean().withMessage('Business upgrade availability must be a boolean.'),
     body('upgrade_availability_first').optional().isBoolean().withMessage('First class upgrade availability must be a boolean.'),
     body('upgrade_availability_chairmans').optional().isBoolean().withMessage('Chairman upgrade availability must be a boolean.'),
-    // Add custom check for PATCH to ensure *some* field is provided?
+
+    // Update/Add rules for Date and Time strings (timezone is removed)
+    body('scheduledArrivalDate').optional() // Optional for PATCH
+        .matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('scheduledArrivalDate must be YYYY-MM-DD.'),
+    body('scheduledArrivalTimeStr').optional() // Optional for PATCH
+        .matches(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/).withMessage('scheduledArrivalTimeStr must be HH:mm or HH:mm:ss.'),
+    // REMOVED: body('scheduledArrivalTimezone').optional().custom(...)
+
+    // Custom validation to ensure required fields for POST / related fields for PATCH
     body().custom((value, { req }) => {
-         // For PATCH, ensure at least one valid field is present
-         const allowedFields = ['airport', 'scheduledArrivalDate', 'scheduledArrivalTimeStr', 'scheduledArrivalTimezone', 'flight_code', 'aircraft', 'upgrade_availability_business', 'upgrade_availability_first', 'upgrade_availability_chairmans'];
-         if (req.method === 'PATCH' && !allowedFields.some(field => req.body[field] !== undefined)) {
-               throw new Error('At least one field must be provided to update an arrival.');
-         }
-         // For POST (add arrival), check required fields
-          if (req.method === 'POST' && (!req.body.airport || !req.body.scheduledArrivalDate || !req.body.scheduledArrivalTimeStr || !req.body.scheduledArrivalTimezone || !req.body.flight_code || !req.body.aircraft || req.body.upgrade_availability_business === undefined || req.body.upgrade_availability_first === undefined || req.body.upgrade_availability_chairmans === undefined )) {
-               throw new Error('Missing required fields for adding arrival (airport, date, time, timezone, flight_code, aircraft, upgrades).');
-         }
-         return true;
-     }),
+        const isPatch = req.method === 'PATCH';
+        const hasTimeComponent = req.body.scheduledArrivalDate || req.body.scheduledArrivalTimeStr;
+
+        if (!isPatch) { // POST request - requires all base fields + date/time
+             if (!req.body.airport || !req.body.iata || !req.body.scheduledArrivalDate || !req.body.scheduledArrivalTimeStr || !req.body.flight_code || !req.body.aircraft || req.body.upgrade_availability_business === undefined || req.body.upgrade_availability_first === undefined || req.body.upgrade_availability_chairmans === undefined) {
+                  throw new Error('Missing required fields for adding arrival (airport, iata, date, time, flight_code, aircraft, upgrades).');
+             }
+        } else { // PATCH request
+             // Ensure at least one field is being updated
+             const allowedFields = ['airport', 'scheduledArrivalDate', 'scheduledArrivalTimeStr', 'flight_code', 'aircraft', 'upgrade_availability_business', 'upgrade_availability_first', 'upgrade_availability_chairmans'];
+             if (!allowedFields.some(field => req.body[field] !== undefined)) {
+                 throw new Error('At least one field must be provided to update an arrival.');
+             }
+             // If updating time, require BOTH date and time string now (no separate timezone)
+             if (hasTimeComponent && (!req.body.scheduledArrivalDate || !req.body.scheduledArrivalTimeStr)) {
+                  throw new Error('To update arrival time, you must provide both scheduledArrivalDate and scheduledArrivalTimeStr.');
+             }
+        }
+        return true;
+    }),
 ];
 
 // Validation for listing flights (example: pagination)
@@ -309,5 +337,5 @@ module.exports = {
     confirmVerificationValidation,
     listFlightsValidation,
     updateFlightValidation,
-    arrivalBodyValidation
+    arrivalBodyValidation,
 };

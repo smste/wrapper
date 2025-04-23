@@ -1,0 +1,44 @@
+<%- include('partials/header', { pageTitle: pageTitle, currentUser: currentUser }) %>
+
+ <h1 class="h2 mb-4 text-danger">Search Flights</h1>
+
+ <div class="card shadow-sm border-light">
+    <div class="card-header bg-white fw-bold">
+        Find Your Flight
+    </div>
+    <div class="card-body">
+        <form action="/flights/results" method="GET">
+             <div class="row g-3 align-items-end">
+                 <div class="col-md-3">
+                    <label for="originIata" class="form-label">Where From</label>
+                    <input type="text" id="originIata" name="originIata" required maxlength="3" placeholder="Origin IATA (e.g., SYD)"
+                           class="form-control text-uppercase">
+                </div>
+                 <div class="col-md-3">
+                    <label for="destinationIata" class="form-label">Where To</label>
+                    <input type="text" id="destinationIata" name="destinationIata" required maxlength="3" placeholder="Destination IATA (e.g., MEL)"
+                           class="form-control text-uppercase">
+                </div>
+                 <div class="col-md-4">
+                    <label for="departureDate" class="form-label">Departure Date</label>
+                    <input type="date" id="departureDate" name="departureDate" required
+                           class="form-control">
+                </div>
+                 <div class="col-md-2 d-grid">
+                     <button type="submit" class="btn btn-danger fw-bold">
+                        Search
+                    </button>
+                 </div>
+            </div>
+        </form>
+     </div>
+ </div>
+
+ <div class="mt-5">
+     <h2 class="h4 mb-3">Search Results</h2>
+      <div id="search-results" class="text-muted fst-italic">
+           (Search results will appear here after implementing the API and results route)
+      </div>
+      </div>
+
+ <%- include('partials/footer', { script: 'flight-search' }) %> <% /* Example: link to specific JS for this page */ %>

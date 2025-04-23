@@ -1,0 +1,42 @@
+<%- include('partials/header', { pageTitle: pageTitle, currentUser: currentUser }) %>
+
+<h1 class="h2 mb-4 text-danger">Dashboard</h1>
+
+<% if (currentUser) { %>
+    <div class="card shadow-sm border-light mb-4">
+        <div class="card-header bg-white fw-bold">
+            Welcome, <%= currentUser.robloxUsername %>!
+        </div>
+        <div class="card-body">
+            <p class="card-text">Your account is successfully linked and you are logged in.</p>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item">
+                    <span class="fw-medium">Roblox ID:</span>
+                    <code class="user-select-all"><%= currentUser.robloxId %></code>
+                </li>
+                <li class="list-group-item">
+                    <span class="fw-medium">Linked Discord ID:</span>
+                    <code class="user-select-all"><%= currentUser.discordId %></code>
+                </li>
+                 <li class="list-group-item">
+                    <span class="fw-medium">Current Points:</span>
+                    <% // You might need to fetch points data separately if not in session %>
+                    <% if (typeof currentUser.points !== 'undefined') { %>
+                        <span class="fw-bold"><%= currentUser.points %></span>
+                    <% } else { %>
+                        <span class="text-muted fst-italic">(Use /myprofile in Discord)</span>
+                    <% } %>
+                </li>
+            </ul>
+             <div class="mt-3">
+                 <a href="/search" class="btn btn-danger">Search Flights</a>
+                 </div>
+        </div>
+    </div>
+<% } else { %>
+    <div class="alert alert-warning" role="alert">
+      You should be logged in to see this page. Please <a href="/login" class="alert-link">log in</a>.
+    </div>
+<% } %>
+
+<%- include('partials/footer', { script: null }) %>

@@ -65,6 +65,35 @@ class ApiClient {
     // --- User Methods ---
     // =========================================
 
+    /**
+     * GET /flights - List flights formatted as plannable legs.
+     * @param {object} [params] - Optional query parameters (e.g., { page: 1, limit: 20 }).
+     * @returns {Promise<object>} Object containing legs array (and potentially pagination data).
+     */
+    async listFlights(params = {}) {
+        const queryParams = new URLSearchParams(params).toString();
+        const url = `/flights${queryParams ? '?' + queryParams : ''}`;
+        console.log(`[ApiClient] Calling GET ${url}`);
+        return this.client.get(url); // Interceptor should return response.data { legs: [...] }
+    }
+
+    /**
+     * POST /plans - Creates a new flight plan.
+     * @param {object} planData - Plan details { planReference?, robloxId, legs: [ { flightReference, segmentFlightCode, departureIata, arrivalIata } ], planName? }.
+     * @returns {Promise<object>} API response { message, plan }.
+     */
+    async createFlightPlan(planData) {
+        if (!planData || !planData.robloxId || !planData.legs || !Array.isArray(planData.legs) || planData.legs.length === 0) {
+             return Promise.reject({ status: 400, message: 'robloxId and at least one leg are required to create a plan.' });
+        }
+        // Generate plan reference client-side if API doesn't
+        if (!planData.planReference) {
+            planData.planReference = `WEB-${planData.robloxId}-${Date.now()}`;
+        }
+        console.log('[ApiClient] Calling POST /plans');
+        return this.client.post('/plans', planData);
+    }
+
     async getUser(robloxId) {
         if (!robloxId || typeof robloxId !== 'number' || robloxId <= 0) {
             return Promise.reject({ status: 400, message: 'Invalid Roblox ID provided.' });
@@ -135,19 +164,83 @@ class ApiClient {
         return this.client.get(`/flights/${encodeURIComponent(flightReference)}`);
     }
 
-    async createFlight(flightReference, departure, dispatcher, date_of_event, arrivals = null) {
-        if (!flightReference || typeof flightReference !== 'string') {
-             return Promise.reject({ status: 400, message: 'Invalid flight reference provided.' });
+    /**
+     * Creates a new flight.
+     * @param {string} flightReference - Unique flight reference.
+     * @param {object} departure - Departure details { airport, iata, time_format }.
+     * @param {string} dispatcher - Dispatcher name/ID.
+     * @param {string} eventDate - Event date string (YYYY-MM-DD).
+     * @param {string} eventTime - Event time string (HH:mm or HH:mm:ss).
+     * @param {string|null} [eventTimezone] - Optional event timezone (e.g., Australia/Sydney, +10:00). Defaults API-side if null.
+     * @param {Array|null} [arrivals] - Optional array of initial arrival objects.
+     * @returns {Promise<object>} API response { message, flight }.
+     */
+    /**
+     * Creates a new flight. Assumes event time is AEST/AEDT if timezone omitted API-side.
+     * @param {string} flightReference - Unique flight reference.
+     * @param {object} departure - Departure details { airport, iata, time_format }.
+     * @param {string} dispatcher - Dispatcher name/ID.
+     * @param {string} eventDate - Event date string (YYYY-MM-DD).
+     * @param {string} eventTime - Event time string (HH:mm or HH:mm:ss).
+     * @param {Array|null} [arrivals] - Optional array of initial arrival objects (each needing date/time strings).
+     * @returns {Promise<object>} API response { message, flight }.
+     */
+    async createFlight(flightReference, departure, dispatcher, eventDate, eventTime, arrivals = null) { // Removed eventTimezone param
+        if (!flightReference || !departure || !dispatcher || !eventDate || !eventTime) {
+            return Promise.reject({ status: 400, message: 'flightReference, departure, dispatcher, eventDate, and eventTime are required.' });
         }
-        // Basic validation, more detailed validation happens API-side
-        if (!departure || !dispatcher || !date_of_event) {
-            return Promise.reject({ status: 400, message: 'Departure, dispatcher, and date_of_event are required.' });
-        }
-        const payload = { departure, dispatcher, date_of_event };
+        const payload = {
+            departure,
+            dispatcher,
+            event_date: eventDate,
+            event_time: eventTime,
+            // event_timezone is no longer sent
+        };
         if (arrivals && Array.isArray(arrivals)) {
-            payload.arrivals = arrivals; // Include optional arrivals
+            // Ensure arrival objects only contain date/time STRINGS expected by updated API
+            payload.arrivals = arrivals.map(arr => ({
+                 airport: arr.airport,
+                 iata: arr.iata,
+                 scheduledArrivalDate: arr.scheduledArrivalDate, // String YYYY-MM-DD
+                 scheduledArrivalTimeStr: arr.scheduledArrivalTimeStr, // String HH:mm:ss
+                 // scheduledArrivalTimezone: REMOVED
+                 flight_code: arr.flight_code,
+                 aircraft: arr.aircraft,
+                 upgrade_availability_business: arr.upgrade_availability_business,
+                 upgrade_availability_first: arr.upgrade_availability_first,
+                 upgrade_availability_chairmans: arr.upgrade_availability_chairmans,
+            }));
         }
         return this.client.post(`/flights/${encodeURIComponent(flightReference)}`, payload);
+    }
+
+    /**
+     * POST /flights/:flight_reference/arrivals - Add Arrival
+     * Assumes AEST/AEDT API-side. arrivalData needs date/time strings.
+     */
+    async createFlightArrival(flightReference, arrivalData) {
+        // arrivalData should contain airport, iata, scheduledArrivalDate, scheduledArrivalTimeStr, flight_code, etc.
+        // NO scheduledArrivalTimezone expected here anymore.
+        if (!flightReference) return Promise.reject({ status: 400, message: 'Flight reference is required.' });
+        if (!arrivalData || typeof arrivalData !== 'object' || !arrivalData.iata || !arrivalData.scheduledArrivalDate || !arrivalData.scheduledArrivalTimeStr /*...*/) {
+             return Promise.reject({ status: 400, message: 'Valid arrival data object including date/time strings is required.' });
+        }
+        return this.client.post(`/flights/${encodeURIComponent(flightReference)}/arrivals`, arrivalData);
+    }
+
+    /**
+     * PATCH /flights/:flight_reference/arrivals/:arrivalIata - Update Arrival
+     * Assumes AEST/AEDT API-side if time updated. updateData needs date/time strings.
+     */
+    async updateArrival(flightReference, arrivalIata, updateData) {
+        // updateData might contain airport, scheduledArrivalDate, scheduledArrivalTimeStr, etc.
+        // NO scheduledArrivalTimezone expected here anymore.
+        if (!flightReference || !arrivalIata) return Promise.reject({ status: 400, message: 'Flight reference and arrival IATA are required.' });
+        if (!updateData || Object.keys(updateData).length === 0) {
+             return Promise.reject({ status: 400, message: 'Update data is required.' });
+        }
+        const url = `/flights/${encodeURIComponent(flightReference)}/arrivals/${encodeURIComponent(arrivalIata.toUpperCase())}`;
+        return this.client.patch(url, updateData);
     }
 
     async updateFlight(flightReference, updateData) {
@@ -175,25 +268,6 @@ class ApiClient {
             url += `${encodeURIComponent(iata.toUpperCase())}`;
         }
         return this.client.get(url);
-    }
-
-    async createFlightArrival(flightReference, arrivalData) {
-        if (!flightReference) return Promise.reject({ status: 400, message: 'Flight reference is required.' });
-        if (!arrivalData || typeof arrivalData !== 'object') {
-             return Promise.reject({ status: 400, message: 'Arrival data object is required.' });
-         }
-         // Remember: send scheduledArrivalTime parts (Date, TimeStr, Timezone)
-        return this.client.post(`/flights/${encodeURIComponent(flightReference)}/arrivals`, arrivalData);
-    }
-
-    async updateArrival(flightReference, arrivalIata, updateData) {
-        if (!flightReference || !arrivalIata) return Promise.reject({ status: 400, message: 'Flight reference and arrival IATA are required.' });
-        if (!updateData || Object.keys(updateData).length === 0) {
-             return Promise.reject({ status: 400, message: 'Update data is required.' });
-        }
-         // Remember: If updating time, send all 3 parts (Date, TimeStr, Timezone)
-        const url = `/flights/<span class="math-inline">\{encodeURIComponent\(flightReference\)\}/arrivals/</span>{encodeURIComponent(arrivalIata.toUpperCase())}`;
-        return this.client.patch(url, updateData);
     }
 
     async deleteArrival(flightReference, arrivalIata) {

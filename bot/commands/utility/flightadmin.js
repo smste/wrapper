@@ -149,42 +149,47 @@ module.exports = {
 
             // --- Flight Create Subcommand ---
             if (subcommand === 'create') {
-                 // Validate time format (basic check, more robust could be added)
-                 const depTime = interaction.options.getString('dep_time');
-                 const eventTime = interaction.options.getString('event_time');
-                 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
-                 if (!timeRegex.test(depTime) || !timeRegex.test(eventTime)) {
-                      return replyStaffError(interaction, 'Departure time and Event time must be in HH:mm format (e.g., 09:30, 14:00).');
-                 }
-                 // Validate date format (basic check)
-                 const eventDate = interaction.options.getString('event_date');
-                 const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-                  if (!dateRegex.test(eventDate)) {
-                       return replyStaffError(interaction, 'Event date must be in YYYY-MM-DD format (e.g., 2025-12-31).');
-                  }
-                 // Validate IATA format
-                 const depIata = interaction.options.getString('dep_iata');
-                 const iataRegex = /^[A-Za-z]{3}$/;
-                  if (!iataRegex.test(depIata)) {
-                       return replyStaffError(interaction, 'Departure IATA must be 3 letters.');
-                  }
+                // --- Input collection ---
+                const depIata = interaction.options.getString('dep_iata');
+                const eventDate = interaction.options.getString('event_date');
+                const eventTime = interaction.options.getString('event_time');
+                const depTime = interaction.options.getString('dep_time');
+                const eventTimezone = interaction.options.getString('event_timezone'); // Optional
 
-                 const departureData = {
-                     airport: interaction.options.getString('dep_airport'),
-                     iata: depIata.toUpperCase(),
-                     time_format: depTime
-                 };
-                 const eventData = {
-                     date: eventDate,
-                     time: eventTime
-                 };
-                 const dispatcher = interaction.options.getString('dispatcher');
+                // --- Basic Format Checks ---
+                const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/; // Allow HH:mm or HH:mm:ss
+                const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                const iataRegex = /^[A-Za-z]{3}$/;
+                if (!iataRegex.test(depIata) || !timeRegex.test(depTime) || !dateRegex.test(eventDate) || !timeRegex.test(eventTime)) {
+                    return replyStaffError(interaction, 'Invalid format for IATA (3 letters), Dep Time (HH:mm), Event Date (YYYY-MM-DD), or Event Time (HH:mm or HH:mm:ss).');
+                }
+                // Note: More specific timezone validation happens API-side, but could add basic check here too
 
-                 // Call API client - Note: passing null for arrivals, as we add them separately
-                 const result = await apiClient.createFlight(flightRef, departureData, dispatcher, eventData, null);
-                 await replyStaffSuccess(interaction, `Flight '${result.flight.flight_reference}' created successfully. Add arrival legs using \`/flightadmin arrival_add\`.`);
+                // --- Prepare API Payload ---
+                const departureData = {
+                    airport: interaction.options.getString('dep_airport'),
+                    iata: depIata.toUpperCase(),
+                    time_format: depTime
+                };
+                const dispatcher = interaction.options.getString('dispatcher');
+                // Pass event date/time/zone parts directly to API client/endpoint
+                // The API will handle parsing and defaulting the timezone
 
-            }
+                // --- Call API client (Modified arguments) ---
+                // Assuming apiClient.createFlight is updated to take individual date/time/zone parts
+                const result = await apiClient.createFlight(
+                    flightRef,
+                    departureData,
+                    dispatcher,
+                    eventDate, // Pass date string
+                    eventTime, // Pass time string
+                    eventTimezone // Pass timezone string (can be null/undefined)
+                    // Pass null/empty array for arrivals explicitly if createFlight expects it now
+                    // (check apiClient definition)
+                );
+                await replyStaffSuccess(interaction, `Flight '${result.flight.flight_reference}' created successfully (Event Timezone defaulted to AEST/AEDT if not specified). Add arrival legs using \`/flightadmin arrival_add\`.`);
+
+           }
             // --- Flight Delete Subcommand ---
             else if (subcommand === 'delete') {
                 const result = await apiClient.deleteFlight(flightRef);

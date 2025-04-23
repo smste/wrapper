@@ -1,0 +1,64 @@
+<%- include('partials/header', { pageTitle: pageTitle, currentUser: currentUser }) %>
+
+<h1 class="h2 mb-4 text-danger">Available Flight Legs</h1>
+<p class="text-muted mb-4">Select legs to add them to your current flight plan draft. <a href="/plan/create" class="link-danger">View current draft</a>.</p>
+
+<div class="list-group shadow-sm mb-4">
+    <% if (legs && legs.length > 0) { %>
+        <% legs.forEach(leg => { %>
+            <div class="list-group-item list-group-item-action d-sm-flex justify-content-between align-items-center">
+                <div class="mb-2 mb-sm-0">
+                    <h5 class="mb-1 fw-bold">
+                        <span class="badge bg-secondary me-2" title="Segment Flight Code"><%= leg.segmentFlightCode %></span>
+                        <span title="<%= leg.departureAirport %>"><%= leg.departureIata %></span> &rarr; <span title="<%= leg.arrivalAirport %>"><%= leg.arrivalIata %></span>
+                    </h5>
+                    <p class="mb-0">
+                        <small class="text-muted">
+                            <span title="Original Flight Reference">Ref: <%= leg.flightReference %></span> |
+                            <span title="Scheduled Arrival Time (AEST/AEDT)">Arr: <%= new Date(leg.scheduledArrivalTimeISO).toLocaleString('en-AU', { timeZone: 'Australia/Sydney', dateStyle: 'short', timeStyle: 'short' }) %> AEST/AEDT</span> |
+                            <span title="Aircraft">Acft: <%= leg.aircraft %></span>
+                        </small>
+                    </p>
+                </div>
+                <div class="mt-2 mt-sm-0">
+                    <button class="btn btn-sm btn-danger add-to-plan-btn w-100 w-sm-auto"
+                            data-flight-ref="<%= leg.flightReference %>"
+                            data-segment-code="<%= leg.segmentFlightCode %>"
+                            data-dep-iata="<%= leg.departureIata %>"
+                            data-arr-iata="<%= leg.arrivalIata %>"
+                            data-dep-airport="<%= leg.departureAirport %>"
+                            data-arr-airport="<%= leg.arrivalAirport %>"
+                            data-arr-time-iso="<%= leg.scheduledArrivalTimeISO %>"
+                            >
+                        Add to Plan +
+                    </button>
+                </div>
+            </div>
+        <% }) %>
+    <% } else { %>
+        <div class="list-group-item">
+            <p class="text-muted text-center my-3">No flight legs currently available in the system.</p>
+        </div>
+    <% } %>
+</div>
+
+<% if (typeof totalPages !== 'undefined' && totalPages > 1) { %>
+    <nav aria-label="Flight list navigation">
+        <ul class="pagination justify-content-center">
+            <li class="page-item <%= currentPage <= 1 ? 'disabled' : '' %>">
+                <a class="page-link" href="/available-flights?page=<%= currentPage - 1 %>" aria-label="Previous">&laquo;</a>
+            </li>
+            <% for (let i = 1; i <= totalPages; i++) { %>
+                <li class="page-item <%= i === currentPage ? 'active' : '' %>" aria-current="<%= i === currentPage ? 'page' : null %>">
+                    <a class="page-link" href="/available-flights?page=<%= i %>"><%= i %></a>
+                </li>
+            <% } %>
+            <li class="page-item <%= currentPage >= totalPages ? 'disabled' : '' %>">
+                <a class="page-link" href="/available-flights?page=<%= currentPage + 1 %>" aria-label="Next">&raquo;</a>
+            </li>
+        </ul>
+    </nav>
+<% } %>
+
+
+<%- include('partials/footer', { script: 'plan-builder-interactive' }) %>

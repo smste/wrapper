@@ -1,0 +1,41 @@
+<%- include('partials/header', { pageTitle: pageTitle, currentUser: currentUser }) %>
+
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+        <div class="card shadow-sm border-light">
+            <div class="card-body p-4 p-md-5">
+                <h1 class="h3 mb-4 fw-bold text-center text-danger">Account Login / Link Check</h1>
+
+                <% if (typeof error !== 'undefined' && error) { %>
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                         <%= error %>
+                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                <% } %>
+
+                <p class="text-muted mb-4 small text-center">
+                    Enter your exact Roblox username below. If your account is linked via our Discord bot, you will be logged in (after Discord confirmation). If not, please use the <code>/link</code> command in Discord first.
+                </p>
+
+                <form action="/login" method="POST" class="needs-validation" novalidate>
+                    <div class="mb-3">
+                        <label for="robloxUsername" class="form-label">Roblox Username:</label>
+                        <input type="text" id="robloxUsername" name="robloxUsername" required
+                               class="form-control form-control-lg"
+                               placeholder="Your Roblox Username">
+                         <div class="invalid-feedback">
+                            Please enter your Roblox username.
+                        </div>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-danger btn-lg fw-bold">
+                            Check Account &rarr;
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<%- include('partials/footer', { script: null }) %> <% /* No specific script needed for basic login page */ %>
