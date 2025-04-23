@@ -1,6 +1,6 @@
 // controllers/attendanceController.js
 const AttendanceRecord = require('../models/AttendanceRecord');
-const FlightPlan = require('../models/FlightPlan'); // Needed to validate plan/leg exists?
+// const FlightPlan = require('../models/flightPlan'); // Needed to validate plan/leg exists?
 
 // POST /attendance/checkin
 exports.recordCheckIn = async (req, res, next) => {
