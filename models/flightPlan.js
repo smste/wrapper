@@ -72,4 +72,4 @@ const FlightPlanSchema = new mongoose.Schema({
 }, { timestamps: true }); // Adds createdAt and updatedAt automatically
 
 // --- Create and export the model connected to the flightPlanDB ---
-module.exports = flightPlanDB.models.FlightPlan || flightPlanDB.model('FlightPlan', FlightPlanSchema);
+module.exports = flightPlanDB.models.FlightPlan || flightPlanDB.model('flightPlan', FlightPlanSchema);
