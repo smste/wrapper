@@ -21,6 +21,7 @@ const flightPlanRoutes = require('./routes/flightPlanRoutes');
 const verificationRoutes = require('./routes/verificationRoutes');
 const webRoutes = require('./routes/webRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
+const internalRoutes = require('./routes/internalRoutes');
 
 // Controllers needed by setup
 const verificationController = require('./controllers/verificationController');
@@ -111,6 +112,8 @@ function setupServer(discordClient) {
     app.use('/users', userRoutes);                   // Needs standard API Key
     app.use('/flights', apiKeyAuth, flightRoutes);
     app.use('/plans', apiKeyAuth, flightPlanRoutes);
+    app.use('/internal', gameServerAuth, internalRoutes);
+    
 
     app.use('/attendance', gameServerAuth, attendanceRoutes);
 
