@@ -1,15 +1,29 @@
 // routes/userRoutes.js
 const express = require('express');
 const userController = require('../controllers/userController');
+
+const apiKeyAuth = require('../middleware/apiKeyAuth');
+const gameServerAuth = require('../middleware/gameServerAuth');
+
 const {
     handleValidationErrors,
     userIdValidation,
     createUserValidation,
     updateUserPointsValidation,
     updateUserDiscordValidation,
+    getOrCreateUserValidation,
+    discordIdValidation
 } = require('../middleware/validation');
 
 const router = express.Router();
+
+router.post(
+    '/get-or-create',
+    gameServerAuth, // Use game server key for this route
+    getOrCreateUserValidation,
+    handleValidationErrors,
+    userController.findOrCreateUser
+);
 
 // GET /users/:robloxId - Get user data
 router.get('/:robloxId', userIdValidation, handleValidationErrors, userController.getUser);

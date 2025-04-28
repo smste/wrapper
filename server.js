@@ -108,7 +108,7 @@ function setupServer(discordClient) {
 
     // Mount API routes with specific authentication middleware
     app.use('/verifications', gameServerAuth, verificationRoutes); // Needs Game Server Key
-    app.use('/users', apiKeyAuth, userRoutes);                   // Needs standard API Key
+    app.use('/users', userRoutes);                   // Needs standard API Key
     app.use('/flights', apiKeyAuth, flightRoutes);
     app.use('/plans', apiKeyAuth, flightPlanRoutes);
 

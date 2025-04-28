@@ -65,6 +65,56 @@ exports.createUser = async (req, res, next) => {
     }
 };
 
+/**
+ * POST /users/get-or-create
+ * Finds a user by Roblox ID or creates a basic placeholder if not found.
+ * Called by Roblox game servers on player join.
+ */
+exports.findOrCreateUser = async (req, res, next) => {
+    // Validation middleware should have run
+    const { robloxId } = req.body;
+
+    try {
+        console.log(`[API /get-or-create] Finding or creating user for Roblox ID: ${robloxId}`);
+        // Use findOneAndUpdate with upsert: true. This atomically finds or creates.
+        const user = await User.findOneAndUpdate(
+            { robloxId: robloxId }, // Find criteria
+            { // Fields to set ONLY if a NEW document is inserted (upserted)
+                $setOnInsert: {
+                    robloxId: robloxId,
+                    points: 0, // Default points
+                    // discordId will be absent/null by default from schema
+                    // createdAt will be added by timestamps:true
+                }
+            },
+            {
+                new: true, // Return the modified (or new) document
+                upsert: true, // Create the document if it doesn't exist
+                runValidators: true, // Run schema validators on insert
+                setDefaultsOnInsert: true // Apply schema defaults (like points: 0) on insert
+            }
+        ).lean(); // Use lean if just returning data without modifying further here
+
+        if (!user) {
+             // This should theoretically not happen with upsert:true, but handle defensively
+             console.error(`[API /get-or-create] findOneAndUpdate with upsert returned null for ${robloxId}`);
+             throw new Error('Failed to find or create user record.');
+        }
+
+        console.log(`[API /get-or-create] Ensured user exists for Roblox ID: ${robloxId}. User ID: ${user._id}, Linked: ${!!user.discordId}`);
+        // Respond with the user document (either existing or newly created placeholder)
+        res.status(200).json(user);
+
+    } catch (error) {
+        console.error(`[API /get-or-create] Error finding/creating user ${robloxId}:`, error);
+         // Handle potential validation errors from Mongoose if runValidators caught something
+         if (error.name === 'ValidationError') {
+             return res.status(400).json({ message: 'Validation Error during upsert', errors: error.errors });
+         }
+        next(error); // Pass to general error handler
+    }
+};
+
 // POST /users/:robloxId/points
 exports.setUserPoints = async (req, res, next) => {
     try {

@@ -312,6 +312,13 @@ const listFlightsValidation = [
     // Add other filters like date range, status etc.
 ];
 
+const getOrCreateUserValidation = [
+    body('robloxId')
+        .exists({ checkFalsy: true }).withMessage('robloxId is required in the request body.')
+        .isInt({ gt: 0 }).withMessage('Roblox ID must be a positive integer.')
+        .toInt() // Convert to integer type
+];
+
 module.exports = {
     handleValidationErrors,
     userIdValidation,
@@ -338,5 +345,6 @@ module.exports = {
     listFlightsValidation,
     updateFlightValidation,
     arrivalBodyValidation,
-    attendanceCheckValidation
+    attendanceCheckValidation,
+    getOrCreateUserValidation
 };
