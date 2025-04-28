@@ -12,7 +12,8 @@ const {
     updateUserPointsValidation,
     updateUserDiscordValidation,
     getOrCreateUserValidation,
-    discordIdValidation
+    discordIdValidation,
+    addCreditsValidation
 } = require('../middleware/validation');
 
 const router = express.Router();
@@ -39,5 +40,14 @@ router.post('/:robloxId/discord', updateUserDiscordValidation, handleValidationE
 
 // GET /users/discord/:discordId - Get user data by Discord ID
 router.get('/discord/:discordId', discordIdValidation, handleValidationErrors, userController.getUserByDiscordId);
+
+router.post(
+    '/:robloxId/credits', // Route path
+    apiKeyAuth, // Protected by standard API key (assuming staff action)
+    userIdValidation, // Validate robloxId in URL param
+    addCreditsValidation, // Validate amount/reason in body
+    handleValidationErrors,
+    userController.addStatusCredits // Link to new controller function
+);
 
 module.exports = router;

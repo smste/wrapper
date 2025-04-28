@@ -2,6 +2,29 @@
 const axios = require('axios');
 
 class ApiClient {
+
+    /**
+     * POST /users/:robloxId/credits
+     * Adds status credits to a user and triggers tier updates API-side.
+     * @param {number} robloxId - The Roblox user ID.
+     * @param {number} amount - The integer amount of Status Credits to add.
+     * @param {string} [reason] - Optional reason for the credit addition.
+     * @returns {Promise<object>} API response { message, user }.
+     */
+    async addStatusCredits(robloxId, amount, reason = null) {
+        if (!robloxId || typeof robloxId !== 'number' || robloxId <= 0) {
+             return Promise.reject({ status: 400, message: 'Invalid Roblox ID provided.' });
+        }
+         if (typeof amount !== 'number' || !Number.isInteger(amount)) {
+             return Promise.reject({ status: 400, message: 'Amount must be an integer.' });
+         }
+         const payload = { amount };
+         if (reason && typeof reason === 'string') {
+             payload.reason = reason;
+         }
+        return this.client.post(`/users/${robloxId}/credits`, payload);
+    }
+    
     /**
      * Creates an instance of the API client.
      * @param {string} baseURL - The base URL of your API (e.g., 'http://localhost:3000').

@@ -2,6 +2,8 @@
 const mongoose = require('mongoose');
 const { userDB } = require('../config/database'); // Import the specific connection
 
+const TIER_LEVELS = ['Bronze', 'Silver', 'Gold', 'Platinum', 'PlatinumOne'];
+
 const UserSchema = new mongoose.Schema({
     robloxId: { // Changed from user_id for clarity
         type: Number,
@@ -21,6 +23,31 @@ const UserSchema = new mongoose.Schema({
         required: true,
         default: 0,
     },
+    statusCredits: { // Separate counter for tier qualification
+        type: Number,
+        required: true,
+        default: 0,
+        min: 0,
+    },
+    currentTier: { // The tier benefits the user currently receives
+        type: String,
+        enum: TIER_LEVELS,
+        required: true,
+        default: 'Bronze',
+        index: true,
+    },
+    lifetimeTier: { // Highest tier achieved for life
+        type: String,
+        enum: TIER_LEVELS,
+        required: true,
+        default: 'Bronze',
+        index: true,
+    },
+    temporaryTierExpiryDate: { // When the current *temporary* tier expires
+        type: Date,
+        required: false, // Null if current tier is lifetime or Bronze
+        default: null,
+    }
     // Add other user-specific fields if needed
 }, { timestamps: true }); // Adds createdAt and updatedAt automatically
 

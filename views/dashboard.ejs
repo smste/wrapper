@@ -33,6 +33,16 @@
                  </div>
         </div>
     </div>
+
+    <% if (currentUser.progress) { %>
+        <li class="list-group-item">
+            <span class="fw-medium">Progress:</span> <%= currentUser.progress.progressPercent %>% towards <%= currentUser.progress.nextTier %> (<%= currentUser.statusCredits %> / <%= currentUser.progress.requiredSC %> SC)
+            <div class="progress mt-1" role="progressbar" aria-label="Tier Progress" aria-valuenow="<%= currentUser.progress.progressPercent %>" aria-valuemin="0" aria-valuemax="100" style="height: 10px;">
+              <div class="progress-bar bg-danger" style="width: <%= currentUser.progress.progressPercent %>%"></div>
+            </div>
+        </li>
+    <% } %>
+    
 <% } else { %>
     <div class="alert alert-warning" role="alert">
       You should be logged in to see this page. Please <a href="/login" class="alert-link">log in</a>.

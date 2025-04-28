@@ -319,6 +319,22 @@ const getOrCreateUserValidation = [
         .toInt() // Convert to integer type
 ];
 
+const addCreditsValidation = [
+    // Uses robloxId from URL parameter, so reuse existing validation if available
+    // Assuming you have: robloxIdParamValidation = [param('robloxId').isInt({ gt: 0 }).toInt()];
+
+    // Validate request body
+    body('amount')
+        .exists({ checkFalsy: false }) // Allow 0 amount? Or require positive? Let's allow any integer. Use checkFalsy: true if 0 not allowed.
+        .isInt().withMessage('Amount must be an integer.')
+        .toInt(), // Convert to integer type
+    body('reason') // Optional reason for audit trail
+        .optional()
+        .isString().withMessage('Reason must be a string.')
+        .trim()
+        .isLength({ min: 1, max: 200 }).withMessage('Reason must be between 1 and 200 characters.')
+];
+
 module.exports = {
     handleValidationErrors,
     userIdValidation,
@@ -346,5 +362,6 @@ module.exports = {
     updateFlightValidation,
     arrivalBodyValidation,
     attendanceCheckValidation,
-    getOrCreateUserValidation
+    getOrCreateUserValidation,
+    addCreditsValidation
 };
