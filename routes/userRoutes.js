@@ -37,9 +37,6 @@ router.post('/:robloxId/points', updateUserPointsValidation, handleValidationErr
  // POST /users/:robloxId/discord - Link/update user's Discord ID
 router.post('/:robloxId/discord', updateUserDiscordValidation, handleValidationErrors, userController.setUserDiscord);
 
-// Add this route definition in userRoutes.js
-const { discordIdValidation } = require('../middleware/validation'); // Import it
-// ... other routes
 // GET /users/discord/:discordId - Get user data by Discord ID
 router.get('/discord/:discordId', discordIdValidation, handleValidationErrors, userController.getUserByDiscordId);
 
